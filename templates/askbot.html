@@ -1,0 +1,365 @@
+{% extends "base.html" %}
+{% block title %}Ask a Bot — UPSC Study Engine{% endblock %}
+
+{% block content %}
+<div class="askbot-page">
+    <!-- Header -->
+    <div class="askbot-header">
+        <div class="askbot-header-left">
+            <div class="askbot-logo">
+                <span class="material-symbols-rounded">smart_toy</span>
+            </div>
+            <div>
+                <h1 class="askbot-title">UPSC AI Assistant</h1>
+                <p class="askbot-subtitle">Ask anything about UPSC Prelims &amp; Mains — syllabus, strategy, current affairs, concepts</p>
+            </div>
+        </div>
+        <button class="askbot-clear-btn" onclick="clearChat()" title="Clear conversation">
+            <span class="material-symbols-rounded" style="font-size:18px;">delete_sweep</span>
+            Clear
+        </button>
+    </div>
+
+    <!-- Chat area -->
+    <div class="askbot-chat-area" id="askbotChatArea">
+        <!-- Welcome message -->
+        <div class="chat-msg ai" id="welcomeMsg">
+            <div class="chat-msg-avatar">
+                <span class="material-symbols-rounded">smart_toy</span>
+            </div>
+            <div class="chat-msg-bubble">
+                <p>👋 Hi! I'm your <strong>UPSC AI Assistant</strong>. I can help you with:</p>
+                <ul>
+                    <li><strong>Prelims</strong> — MCQ practice, factual questions, current affairs, static GK</li>
+                    <li><strong>Mains</strong> — Answer structuring, GS paper strategies, essay outlines</li>
+                    <li><strong>Syllabus &amp; Strategy</strong> — Topic-wise breakdowns, preparation plans, booklists</li>
+                    <li><strong>Current Affairs</strong> — Recent events, government schemes, international relations</li>
+                    <li><strong>Concepts</strong> — Polity, Economy, History, Geography, Science &amp; Tech, Ethics</li>
+                </ul>
+                <p>Ask me anything — I'm here to help you crack UPSC! 🎯</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Suggestions + Input -->
+    <div class="askbot-input-area">
+        <div class="askbot-suggestion-bar">
+            <button class="chat-suggestion" onclick="sendSuggestion('What is the UPSC CSE exam pattern for Prelims and Mains?')">📋 Exam Pattern</button>
+            <button class="chat-suggestion" onclick="sendSuggestion('Explain the basic structure of the Indian Constitution')">📜 Polity</button>
+            <button class="chat-suggestion" onclick="sendSuggestion('Give me a 6-month preparation strategy for UPSC Prelims')">📅 Strategy</button>
+            <button class="chat-suggestion" onclick="sendSuggestion('What are the important government schemes launched in 2025?')">🏛️ Schemes</button>
+            <button class="chat-suggestion" onclick="sendSuggestion('Explain fiscal policy vs monetary policy with examples')">💰 Economy</button>
+            <button class="chat-suggestion" onclick="sendSuggestion('Write a model answer for: Discuss the role of judiciary in protecting fundamental rights')">✍️ Mains Answer</button>
+        </div>
+        <form class="chat-input-form" onsubmit="sendMessage(event)">
+            <input type="text" id="askbotInput" class="chat-text-input"
+                   placeholder="Ask anything about UPSC..."
+                   autocomplete="off">
+            <button type="submit" class="chat-send-btn" id="askbotSendBtn">
+                <span class="material-symbols-rounded">send</span>
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let chatHistory = [];
+
+function appendMsg(role, html) {
+    const msgs = document.getElementById('askbotChatArea');
+    const div = document.createElement('div');
+    div.className = 'chat-msg ' + role;
+    const icon = role === 'ai' ? 'smart_toy' : 'person';
+    div.innerHTML = `
+        <div class="chat-msg-avatar"><span class="material-symbols-rounded">${icon}</span></div>
+        <div class="chat-msg-bubble">${html}</div>
+    `;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+    return div;
+}
+
+function showTyping() {
+    return appendMsg('ai', '<div class="typing-indicator"><span></span><span></span><span></span></div>');
+}
+
+function sendSuggestion(text) {
+    document.getElementById('askbotInput').value = text;
+    sendMessage(new Event('submit'));
+}
+
+function sendMessage(e) {
+    e.preventDefault();
+    const input = document.getElementById('askbotInput');
+    const query = input.value.trim();
+    if (!query) return;
+
+    // Hide welcome on first message
+    const welcome = document.getElementById('welcomeMsg');
+    if (welcome && chatHistory.length === 0) {
+        welcome.style.display = 'none';
+    }
+
+    appendMsg('user', `<p>${escapeHTML(query)}</p>`);
+    chatHistory.push({ role: 'user', text: query });
+    input.value = '';
+    input.disabled = true;
+    document.getElementById('askbotSendBtn').disabled = true;
+
+    // Hide suggestions after first message
+    const sugBar = document.querySelector('.askbot-suggestion-bar');
+    if (sugBar) sugBar.style.display = 'none';
+
+    const typingEl = showTyping();
+
+    fetch('/ask-bot/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            query: query,
+            history: chatHistory.slice(-10)  // send last 10 messages for context
+        }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        typingEl.remove();
+        if (data.error) {
+            appendMsg('ai', `<p style="color:#e53935;">${data.error}</p>`);
+        } else if (data.answer) {
+            appendMsg('ai', renderMarkdown(data.answer));
+            chatHistory.push({ role: 'ai', text: data.answer });
+        } else {
+            appendMsg('ai', '<p>No response received. Please try again.</p>');
+        }
+    })
+    .catch(err => {
+        typingEl.remove();
+        appendMsg('ai', `<p style="color:#e53935;">Network error: ${err}</p>`);
+    })
+    .finally(() => {
+        input.disabled = false;
+        document.getElementById('askbotSendBtn').disabled = false;
+        input.focus();
+    });
+}
+
+function clearChat() {
+    chatHistory = [];
+    const area = document.getElementById('askbotChatArea');
+    area.innerHTML = '';
+    // Restore welcome
+    const welcomeHtml = `
+        <div class="chat-msg ai" id="welcomeMsg">
+            <div class="chat-msg-avatar"><span class="material-symbols-rounded">smart_toy</span></div>
+            <div class="chat-msg-bubble">
+                <p>👋 Hi! I'm your <strong>UPSC AI Assistant</strong>. I can help you with:</p>
+                <ul>
+                    <li><strong>Prelims</strong> — MCQ practice, factual questions, current affairs, static GK</li>
+                    <li><strong>Mains</strong> — Answer structuring, GS paper strategies, essay outlines</li>
+                    <li><strong>Syllabus &amp; Strategy</strong> — Topic-wise breakdowns, preparation plans, booklists</li>
+                    <li><strong>Current Affairs</strong> — Recent events, government schemes, international relations</li>
+                    <li><strong>Concepts</strong> — Polity, Economy, History, Geography, Science &amp; Tech, Ethics</li>
+                </ul>
+                <p>Ask me anything — I'm here to help you crack UPSC! 🎯</p>
+            </div>
+        </div>`;
+    area.innerHTML = welcomeHtml;
+    // Restore suggestions
+    const sugBar = document.querySelector('.askbot-suggestion-bar');
+    if (sugBar) sugBar.style.display = '';
+}
+
+function escapeHTML(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderMarkdown(text) {
+    // ── Step 0: Inline markdown formatting ──
+    let clean = text
+        .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+        .replace(/\*(.+?)\*/g, '<i>$1</i>');
+
+    clean = clean.replace(/\{\{(.+?)\}\}/g, '<b>$1</b>');
+    clean = clean.replace(/\{([^}]{2,80})\}/g, '<b>$1</b>');
+
+    let lines = clean.split('\n');
+    let html = '';
+    let inOl = false;
+    let inSubOl = false;
+    let inUl = false;
+    let listItems = [];
+    let listId = 0;
+
+    // ── Helper: detect markdown table row ──
+    function isTableRow(line) {
+        return /^\|(.+)\|\s*$/.test(line.trim());
+    }
+    function isSeparatorRow(line) {
+        return /^\|[\s:\-|]+\|\s*$/.test(line.trim());
+    }
+    function parseTableCells(line) {
+        return line.trim().replace(/^\|/, '').replace(/\|\s*$/, '').split('|').map(c => c.trim());
+    }
+
+    function flushList() {
+        if (listItems.length === 0) return;
+        const SHOW_LIMIT = 10;
+        const needsMore = listItems.length > SHOW_LIMIT;
+        html += '<ol class="chat-num-list">';
+        listItems.forEach((item, idx) => {
+            if (needsMore && idx >= SHOW_LIMIT) {
+                if (idx === SHOW_LIMIT) {
+                    html += `</ol><div class="chat-show-more-wrap"><ol class="chat-num-list chat-hidden-list" id="moreList${listId}" start="${SHOW_LIMIT + 1}" style="display:none;">`;
+                }
+            }
+            html += '<li>' + item + '</li>';
+        });
+        if (needsMore) {
+            html += `</ol><button class="chat-show-more-btn" onclick="toggleMore(${listId}, this)">Show ${listItems.length - SHOW_LIMIT} more</button></div>`;
+            listId++;
+        } else {
+            html += '</ol>';
+        }
+        listItems = [];
+    }
+
+    function flushUl() {
+        if (inUl) { html += '</ul>'; inUl = false; }
+    }
+
+    function nextNonEmptyIsNumbered(fromIdx) {
+        for (let j = fromIdx + 1; j < lines.length; j++) {
+            let t = lines[j].trim();
+            if (t) return /^\d+\.\s+/.test(t);
+        }
+        return false;
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+        let line = lines[i].trim();
+
+        // ── Markdown table detection ──
+        if (isTableRow(line)) {
+            // Flush any open lists
+            if (inOl) { if (inSubOl) { html += '</ol>'; inSubOl = false; } flushList(); inOl = false; }
+            flushUl();
+
+            // Collect all consecutive table rows
+            let tableRows = [];
+            while (i < lines.length && isTableRow(lines[i].trim())) {
+                let row = lines[i].trim();
+                if (!isSeparatorRow(row)) {
+                    tableRows.push(parseTableCells(row));
+                }
+                i++;
+            }
+            i--; // back up one since the for loop will increment
+
+            if (tableRows.length > 0) {
+                html += '<div class="chat-table-wrap"><table class="chat-table">';
+                // First row = header
+                html += '<thead><tr>';
+                tableRows[0].forEach(cell => {
+                    html += `<th>${cell}</th>`;
+                });
+                html += '</tr></thead>';
+                // Remaining rows = body
+                if (tableRows.length > 1) {
+                    html += '<tbody>';
+                    for (let r = 1; r < tableRows.length; r++) {
+                        html += '<tr>';
+                        tableRows[r].forEach(cell => {
+                            html += `<td>${cell}</td>`;
+                        });
+                        html += '</tr>';
+                    }
+                    html += '</tbody>';
+                }
+                html += '</table></div>';
+            }
+            continue;
+        }
+
+        if (!line) {
+            if (inOl && !nextNonEmptyIsNumbered(i)) {
+                if (inSubOl) { html += '</ol>'; inSubOl = false; }
+                flushList(); inOl = false;
+            }
+            if (inSubOl && !inOl) { html += '</ol>'; inSubOl = false; }
+            flushUl();
+            continue;
+        }
+
+        // ── Headings: ### or ## or # ──
+        let headingMatch = line.match(/^(#{1,4})\s+(.+)/);
+        if (headingMatch) {
+            if (inOl) { flushList(); inOl = false; }
+            flushUl();
+            html += '<h4 class="chat-heading">' + headingMatch[2] + '</h4>';
+            continue;
+        }
+
+        // ── Bullet lists: * or - ──
+        let bulletMatch = line.match(/^[\*\-]\s+(.+)/);
+        if (bulletMatch) {
+            if (inOl) { flushList(); inOl = false; }
+            if (!inUl) { html += '<ul class="chat-bullet-list">'; inUl = true; }
+            html += '<li>' + bulletMatch[1] + '</li>';
+            continue;
+        }
+        flushUl();
+
+        // ── Sub-lists: a. b. c. ──
+        let subMatch = line.match(/^([a-z])\.\s+(.+)/);
+        if (subMatch && subMatch[1].length === 1) {
+            if (!inSubOl) { html += '<ol class="chat-sub-list">'; inSubOl = true; }
+            html += '<li>' + subMatch[2] + '</li>';
+            continue;
+        }
+        if (inSubOl) { html += '</ol>'; inSubOl = false; }
+
+        // ── Numbered lists: 1. 2. 3. ──
+        let numMatch = line.match(/^(\d+)\.\s+(.+)/);
+        if (numMatch) {
+            if (!inOl) { inOl = true; }
+            listItems.push(numMatch[2]);
+            continue;
+        }
+        if (inOl) { flushList(); inOl = false; }
+
+        // ── ALL-CAPS heading ──
+        if (line === line.toUpperCase() && line.length > 3 && line.length < 80 && !/\d{3,}/.test(line)) {
+            html += '<h4 class="chat-heading">' + line.charAt(0) + line.slice(1).toLowerCase() + '</h4>';
+            continue;
+        }
+
+        // ── Regular paragraph ──
+        html += '<p>' + line + '</p>';
+    }
+
+    if (inSubOl) html += '</ol>';
+    if (inOl) flushList();
+    flushUl();
+    return html;
+}
+
+function toggleMore(id, btn) {
+    const el = document.getElementById('moreList' + id);
+    if (el.style.display === 'none') {
+        el.style.display = '';
+        btn.textContent = 'Show less';
+    } else {
+        el.style.display = 'none';
+        const count = el.querySelectorAll('li').length;
+        btn.textContent = 'Show ' + count + ' more';
+    }
+}
+
+// Focus input on page load
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('askbotInput').focus();
+});
+</script>
+{% endblock %}

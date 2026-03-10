@@ -1,0 +1,435 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — UPSC Study Engine{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2>Dashboard</h2>
+        <p class="page-desc">Upload study material — auto-processed for Prelims & Mains</p>
+    </div>
+</div>
+
+<!-- Prelims Stats Row -->
+<h4 class="stats-section-title">Prelims</h4>
+<div class="stats-grid stats-grid-4">
+    <div class="stat-card">
+        <div class="stat-icon-wrap bg-rose">
+            <span class="material-symbols-rounded">inventory_2</span>
+        </div>
+        <div class="stat-info">
+            <span class="stat-number">{{ counts.raw_content }}</span>
+            <span class="stat-label">Raw Content</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon-wrap bg-blue">
+            <span class="material-symbols-rounded">menu_book</span>
+        </div>
+        <div class="stat-info">
+            <span class="stat-number">{{ counts.content }}</span>
+            <span class="stat-label">Study Notes</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon-wrap bg-emerald">
+            <span class="material-symbols-rounded">summarize</span>
+        </div>
+        <div class="stat-info">
+            <span class="stat-number">{{ counts.summary }}</span>
+            <span class="stat-label">Summaries</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon-wrap bg-amber">
+            <span class="material-symbols-rounded">quiz</span>
+        </div>
+        <div class="stat-info">
+            <span class="stat-number">{{ counts.questions }}</span>
+            <span class="stat-label">MCQ Papers</span>
+        </div>
+    </div>
+</div>
+
+<!-- Mains Stats Row -->
+<h4 class="stats-section-title">Mains</h4>
+<div class="stats-grid stats-grid-4">
+    <div class="stat-card">
+        <div class="stat-icon-wrap bg-rose">
+            <span class="material-symbols-rounded">inventory_2</span>
+        </div>
+        <div class="stat-info">
+            <span class="stat-number">{{ counts.mains_raw_content }}</span>
+            <span class="stat-label">Raw Content</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon-wrap bg-purple">
+            <span class="material-symbols-rounded">menu_book</span>
+        </div>
+        <div class="stat-info">
+            <span class="stat-number">{{ counts.mains_content }}</span>
+            <span class="stat-label">Study Notes</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon-wrap bg-teal">
+            <span class="material-symbols-rounded">summarize</span>
+        </div>
+        <div class="stat-info">
+            <span class="stat-number">{{ counts.mains_summary }}</span>
+            <span class="stat-label">Summaries</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon-wrap bg-orange">
+            <span class="material-symbols-rounded">edit_note</span>
+        </div>
+        <div class="stat-info">
+            <span class="stat-number">{{ counts.mains_questions }}</span>
+            <span class="stat-label">Q&A Papers</span>
+        </div>
+    </div>
+</div>
+
+<!-- Input Section: File Upload + Text Paste side by side -->
+<div class="input-grid">
+    <!-- File Upload Card -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title-row">
+                <span class="material-symbols-rounded card-icon">upload_file</span>
+                <h3>Upload File</h3>
+            </div>
+            <span class="chip chip-muted">PDF, TXT, Images</span>
+        </div>
+        <form action="{{ url_for('upload_file') }}" method="POST" enctype="multipart/form-data" id="uploadForm">
+            <div class="card-body">
+                <div class="upload-zone" id="dropZone">
+                    <span class="material-symbols-rounded upload-zone-icon">cloud_upload</span>
+                    <p class="upload-zone-text">Drag & drop your file here</p>
+                    <p class="upload-zone-hint">or <label for="fileInput" class="link">browse files</label></p>
+                    <p class="upload-zone-formats">PDF, TXT, PNG, JPG, TIFF, BMP</p>
+                    <input type="file" name="file" id="fileInput" accept=".pdf,.txt,.png,.jpg,.jpeg,.tiff,.bmp" hidden>
+                </div>
+                <div class="file-preview" id="filePreview" style="display:none;">
+                    <span class="material-symbols-rounded" style="color:var(--primary);">description</span>
+                    <span class="file-name" id="fileName"></span>
+                    <button type="button" class="btn-icon-sm" id="removeFile">
+                        <span class="material-symbols-rounded">close</span>
+                    </button>
+                </div>
+            </div>
+            <div class="card-footer">
+                <label class="checkbox-wrap">
+                    <input type="checkbox" name="auto_process" checked>
+                    <span>Auto-process</span>
+                </label>
+                <button type="submit" class="btn btn-primary">
+                    <span class="material-symbols-rounded btn-icon">rocket_launch</span>
+                    Upload & Process
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Text Paste Card -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title-row">
+                <span class="material-symbols-rounded card-icon">content_paste</span>
+                <h3>Paste Text</h3>
+            </div>
+            <span class="chip chip-muted">Direct Input</span>
+        </div>
+        <form action="{{ url_for('paste_text') }}" method="POST" id="pasteForm">
+            <div class="card-body">
+                <textarea name="paste_text" class="paste-area" id="pasteArea"
+                    placeholder="Paste your article, news clipping, or study notes here..."></textarea>
+                <div class="paste-counter">
+                    <span id="charCount">0</span> characters
+                </div>
+            </div>
+            <div class="card-footer">
+                <label class="checkbox-wrap">
+                    <input type="checkbox" name="auto_process_paste" checked>
+                    <span>Auto-process</span>
+                </label>
+                <button type="submit" class="btn btn-primary">
+                    <span class="material-symbols-rounded btn-icon">rocket_launch</span>
+                    Save & Process
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Pipeline Status -->
+<div class="card" id="statusCard" style="{% if not status.running and not status.logs %}display:none;{% endif %}">
+    <div class="card-header">
+        <div class="card-title-row">
+            <span class="material-symbols-rounded card-icon">settings</span>
+            <h3>Pipeline Status</h3>
+        </div>
+        {% if status.running %}
+        <span class="chip chip-processing pulse">
+            <span class="material-symbols-rounded" style="font-size:14px;">sync</span>
+            Processing...
+        </span>
+        {% elif status.error %}
+        <span class="chip chip-error">Error</span>
+        {% elif status.logs %}
+        <span class="chip chip-success">Complete</span>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        {% if status.running %}
+        <div class="progress-wrap">
+            <div class="progress-track">
+                <div class="progress-fill" id="progressBar" style="width: {{ status.progress }}%"></div>
+            </div>
+            <span class="progress-label">{{ status.progress }}%</span>
+        </div>
+        <p class="status-info">
+            <span class="material-symbols-rounded" style="font-size:16px;">description</span>
+            {{ status.filename }} &middot; Started {{ status.started_at }}
+        </p>
+        {% endif %}
+
+        {% if status.error %}
+        <div class="alert alert-error">
+            <span class="material-symbols-rounded">error</span>
+            {{ status.error }}
+        </div>
+        {% endif %}
+
+        <div class="terminal" id="logBox">
+            {% for log in status.logs[-15:] %}
+            <div class="terminal-line">{{ log }}</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Articles Section — Uploaded / Processed Tabs -->
+{% set uploaded = articles_by_status.uploaded + articles_by_status.processing %}
+{% set processed = articles_by_status.processed %}
+{% set errored = articles_by_status.error %}
+{% if uploaded or processed or errored %}
+<div class="card">
+    <div class="card-header">
+        <div class="card-title-row">
+            <span class="material-symbols-rounded card-icon">folder_open</span>
+            <h3>Articles</h3>
+        </div>
+        <div class="tab-group">
+            <button class="tab active" data-tab="uploaded" onclick="switchTab('uploaded')">
+                Uploaded
+                {% if uploaded %}<span class="tab-count">{{ uploaded|length }}</span>{% endif %}
+            </button>
+            <button class="tab" data-tab="processed" onclick="switchTab('processed')">
+                Processed
+                {% if processed %}<span class="tab-count">{{ processed|length }}</span>{% endif %}
+            </button>
+            {% if errored %}
+            <button class="tab" data-tab="errored" onclick="switchTab('errored')">
+                Errors
+                <span class="tab-count tab-count-error">{{ errored|length }}</span>
+            </button>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <!-- Uploaded Tab -->
+        <div class="tab-panel active" id="panel-uploaded">
+            {% if uploaded %}
+            <div class="article-list">
+                {% for a in uploaded %}
+                <div class="article-row">
+                    <div class="article-icon-wrap">
+                        {% if a.file_type == 'paste' %}
+                        <span class="material-symbols-rounded">content_paste</span>
+                        {% else %}
+                        <span class="material-symbols-rounded">description</span>
+                        {% endif %}
+                    </div>
+                    <div class="article-info">
+                        <span class="article-title">{{ a.title }}</span>
+                        <span class="article-meta">{{ a.filename }} &middot; {{ a.created_at[:16] }}</span>
+                    </div>
+                    {% if a.status == 'processing' %}
+                    <span class="chip chip-processing pulse" style="font-size:11px;">Processing</span>
+                    {% else %}
+                    <a href="{{ url_for('process_article', article_id=a.id) }}" class="btn btn-sm btn-outline">
+                        <span class="material-symbols-rounded btn-icon">play_arrow</span>
+                        Process
+                    </a>
+                    {% endif %}
+                    <a href="{{ url_for('delete_article_route', article_id=a.id) }}"
+                       class="btn-icon-sm btn-icon-danger"
+                       onclick="return confirm('Delete this article?')">
+                        <span class="material-symbols-rounded">delete</span>
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-tab">
+                <span class="material-symbols-rounded empty-tab-icon">inbox</span>
+                <p>No pending articles</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Processed Tab -->
+        <div class="tab-panel" id="panel-processed">
+            {% if processed %}
+            <div class="article-list">
+                {% for a in processed %}
+                <div class="article-row">
+                    <div class="article-icon-wrap article-icon-done">
+                        <span class="material-symbols-rounded">check_circle</span>
+                    </div>
+                    <div class="article-info">
+                        <span class="article-title">{{ a.title }}</span>
+                        <div class="article-meta-row">
+                            <span class="article-meta">{{ a.processed_at[:16] if a.processed_at else '' }}</span>
+                            <div class="topic-badges">
+                                {% for topic in a.topics %}
+                                {% set stem = topic.lower().replace(' & ', '_').replace(' ', '_') %}
+                                <span class="topic-badge" style="background:{{ topic_colors.get(stem, '#546e7a') }}22; color:{{ topic_colors.get(stem, '#546e7a') }}; border:1px solid {{ topic_colors.get(stem, '#546e7a') }}44;">
+                                    {{ topic }}
+                                </span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    <a href="{{ url_for('delete_article_route', article_id=a.id) }}"
+                       class="btn btn-sm btn-danger-outline"
+                       onclick="return confirm('Delete this article and all its generated content (notes, summaries, MCQs, raw content)?')">
+                        <span class="material-symbols-rounded btn-icon">delete</span>
+                        Delete
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-tab">
+                <span class="material-symbols-rounded empty-tab-icon">task_alt</span>
+                <p>No processed articles yet</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Errors Tab -->
+        {% if errored %}
+        <div class="tab-panel" id="panel-errored">
+            <div class="article-list">
+                {% for a in errored %}
+                <div class="article-row">
+                    <div class="article-icon-wrap article-icon-error">
+                        <span class="material-symbols-rounded">error</span>
+                    </div>
+                    <div class="article-info">
+                        <span class="article-title">{{ a.title }}</span>
+                        <span class="article-meta article-error-msg">{{ a.error or 'Unknown error' }}</span>
+                    </div>
+                    <a href="{{ url_for('process_article', article_id=a.id) }}" class="btn btn-sm btn-outline">
+                        <span class="material-symbols-rounded btn-icon">replay</span>
+                        Retry
+                    </a>
+                    <a href="{{ url_for('delete_article_route', article_id=a.id) }}"
+                       class="btn-icon-sm btn-icon-danger"
+                       onclick="return confirm('Delete this article?')">
+                        <span class="material-symbols-rounded">delete</span>
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Upload drag & drop ─────────────────────────────────────────────
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const filePreview = document.getElementById('filePreview');
+const fileName = document.getElementById('fileName');
+const removeFile = document.getElementById('removeFile');
+
+['dragenter', 'dragover'].forEach(ev => {
+    dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+});
+['dragleave', 'drop'].forEach(ev => {
+    dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.remove('drag-over'); });
+});
+dropZone.addEventListener('drop', e => {
+    fileInput.files = e.dataTransfer.files;
+    showFile(e.dataTransfer.files[0]);
+});
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => { if (fileInput.files.length) showFile(fileInput.files[0]); });
+removeFile.addEventListener('click', e => {
+    e.stopPropagation();
+    fileInput.value = '';
+    filePreview.style.display = 'none';
+    dropZone.style.display = '';
+});
+
+function showFile(file) {
+    fileName.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+    filePreview.style.display = 'flex';
+    dropZone.style.display = 'none';
+}
+
+// ── Text paste character counter ────────────────────────────────────
+const pasteArea = document.getElementById('pasteArea');
+const charCount = document.getElementById('charCount');
+pasteArea.addEventListener('input', () => {
+    charCount.textContent = pasteArea.value.length.toLocaleString();
+});
+
+// ── Tab switching ───────────────────────────────────────────────────
+function switchTab(name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelector(`.tab[data-tab="${name}"]`).classList.add('active');
+    document.getElementById('panel-' + name).classList.add('active');
+}
+
+// ── Pipeline polling ────────────────────────────────────────────────
+{% if status.running %}
+const statusCard = document.getElementById('statusCard');
+statusCard.style.display = '';
+const poll = setInterval(async () => {
+    try {
+        const res = await fetch('/status');
+        const data = await res.json();
+        const bar = document.getElementById('progressBar');
+        const logBox = document.getElementById('logBox');
+        const label = document.querySelector('.progress-label');
+
+        if (bar) {
+            bar.style.width = data.progress + '%';
+        }
+        if (label) {
+            label.textContent = data.progress + '%';
+        }
+        if (logBox && data.logs) {
+            logBox.innerHTML = data.logs.slice(-15).map(l => '<div class="terminal-line">' + l + '</div>').join('');
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+        if (!data.running) {
+            clearInterval(poll);
+            setTimeout(() => location.reload(), 1200);
+        }
+    } catch(e) {}
+}, 2000);
+{% endif %}
+</script>
+{% endblock %}

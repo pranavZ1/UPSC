@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+{% block title %}{{ book.title }} — UPSC Study Engine{% endblock %}
+
+{% block content %}
+<!-- Compact header bar -->
+<div class="book-viewer-header">
+    <a href="{{ url_for('books_page') }}" class="btn btn-ghost">
+        <span class="material-symbols-rounded">arrow_back</span>
+        Library
+    </a>
+    <h2 class="book-viewer-title">{{ book.title }}</h2>
+    <div class="book-viewer-meta">
+        <span class="badge badge-{{ book.category }}">{{ book.category|capitalize }}</span>
+    </div>
+</div>
+
+<!-- Full-width PDF viewer -->
+<div class="book-fullview">
+    <iframe src="{{ pdf_url }}#navpanes=0&scrollbar=1" class="book-fullview-frame"></iframe>
+</div>
+
+<!-- Floating Book AI button (bottom-right) -->
+<button class="chat-fab" id="chatFab" onclick="openChat()">
+    <span class="material-symbols-rounded chat-fab-icon">auto_awesome</span>
+    <span class="chat-fab-label">Book AI</span>
+</button>
+
+<!-- Chat Drawer (slides in from right, overlays on top of PDF) -->
+<div class="chat-drawer-backdrop" id="chatBackdrop" onclick="closeChat()"></div>
+<div class="chat-drawer" id="chatDrawer">
+    <!-- Chat header -->
+    <div class="chat-header">
+        <div class="chat-header-left">
+            <span class="material-symbols-rounded chat-logo">auto_awesome</span>
+            <div>
+                <div class="chat-header-title">Book AI</div>
+                <div class="chat-header-sub">{{ book.title }}</div>
+            </div>
+        </div>
+        <button class="btn-icon" onclick="closeChat()" title="Close chat">
+            <span class="material-symbols-rounded">close</span>
+        </button>
+    </div>
+
+    <!-- Chat messages -->
+    <div class="chat-messages" id="chatMessages">
+        {% if not book.indexed %}
+        <div class="chat-preparing" id="chatPreparing">
+            <div class="index-spinner"></div>
+            <span>Preparing AI for this book... this may take a minute</span>
+        </div>
+        {% endif %}
+        <div class="chat-msg ai" id="welcomeMsg" {% if not book.indexed %}style="display:none;"{% endif %}>
+            <div class="chat-msg-avatar">
+                <span class="material-symbols-rounded">auto_awesome</span>
+            </div>
+            <div class="chat-msg-bubble">
+                <p>👋 Hi! I'm your AI study assistant for <strong>{{ book.title }}</strong>.</p>
+                <p>Ask me anything — key notes, summaries, specific topics, or any question!</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat input -->
+    <div class="chat-input-area">
+        <div class="chat-suggestion-bar">
+            <button class="chat-suggestion" onclick="sendSuggestion('Give me key notes from this book')">📝 Key Notes</button>
+            <button class="chat-suggestion" onclick="sendSuggestion('Summarize the main topics')">📋 Summary</button>
+            <button class="chat-suggestion" onclick="sendSuggestion('What topics does this book cover?')">📖 Coverage</button>
+        </div>
+        <form class="chat-input-form" onsubmit="sendMessage(event)">
+            <input type="text" id="chatInput" class="chat-text-input"
+                   placeholder="Ask about this book..."
+                   autocomplete="off" {% if not book.indexed %}disabled{% endif %}>
+            <button type="submit" class="chat-send-btn" id="chatSendBtn" {% if not book.indexed %}disabled{% endif %}>
+                <span class="material-symbols-rounded">send</span>
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const BOOK_ID = "{{ book.id }}";
+let IS_INDEXED = {{ 'true' if book.indexed else 'false' }};
+
+// ── Drawer open / close ─────────────────────────
+function openChat() {
+    document.getElementById('chatDrawer').classList.add('open');
+    document.getElementById('chatBackdrop').classList.add('open');
+    document.getElementById('chatFab').style.display = 'none';
+    if (IS_INDEXED) document.getElementById('chatInput').focus();
+}
+
+function closeChat() {
+    document.getElementById('chatDrawer').classList.remove('open');
+    document.getElementById('chatBackdrop').classList.remove('open');
+    document.getElementById('chatFab').style.display = '';
+}
+
+// ── Auto-poll indexing (no user action needed) ──
+function pollIndexStatus() {
+    const interval = setInterval(() => {
+        fetch(`/books/${BOOK_ID}/index-status`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.indexed) {
+                    clearInterval(interval);
+                    IS_INDEXED = true;
+                    // Remove preparing indicator, show welcome + enable input
+                    const prep = document.getElementById('chatPreparing');
+                    if (prep) prep.remove();
+                    const welcome = document.getElementById('welcomeMsg');
+                    if (welcome) welcome.style.display = '';
+                    document.getElementById('chatInput').disabled = false;
+                    document.getElementById('chatSendBtn').disabled = false;
+                } else if (data.error) {
+                    clearInterval(interval);
+                    const prep = document.getElementById('chatPreparing');
+                    if (prep) prep.innerHTML = '<span style="color:#e53935;">Something went wrong preparing this book. Please re-upload.</span>';
+                }
+            });
+    }, 3000);
+}
+
+// Start polling if not yet indexed
+{% if not book.indexed %}
+document.addEventListener('DOMContentLoaded', () => pollIndexStatus());
+{% endif %}
+
+// ── Chat messages ────────────────────────────────
+function appendMsg(role, html) {
+    const msgs = document.getElementById('chatMessages');
+    const div = document.createElement('div');
+    div.className = 'chat-msg ' + role;
+    const icon = role === 'ai' ? 'auto_awesome' : 'person';
+    div.innerHTML = `
+        <div class="chat-msg-avatar"><span class="material-symbols-rounded">${icon}</span></div>
+        <div class="chat-msg-bubble">${html}</div>
+    `;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+    return div;
+}
+
+function showTyping() {
+    return appendMsg('ai', '<div class="typing-indicator"><span></span><span></span><span></span></div>');
+}
+
+function sendSuggestion(text) {
+    document.getElementById('chatInput').value = text;
+    sendMessage(new Event('submit'));
+}
+
+function sendMessage(e) {
+    e.preventDefault();
+    const input = document.getElementById('chatInput');
+    const query = input.value.trim();
+    if (!query || !IS_INDEXED) return;
+
+    appendMsg('user', `<p>${escapeHTML(query)}</p>`);
+    input.value = '';
+    input.disabled = true;
+    document.getElementById('chatSendBtn').disabled = true;
+
+    const typingEl = showTyping();
+
+    fetch(`/books/${BOOK_ID}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        typingEl.remove();
+        if (data.error) {
+            appendMsg('ai', `<p style="color:#e53935;">${data.error}</p>`);
+        } else if (data.answer) {
+            appendMsg('ai', renderMarkdown(data.answer));
+        } else {
+            appendMsg('ai', '<p>No response received. Please try again.</p>');
+        }
+    })
+    .catch(err => {
+        typingEl.remove();
+        appendMsg('ai', `<p style="color:#e53935;">Network error: ${err}</p>`);
+    })
+    .finally(() => {
+        input.disabled = false;
+        document.getElementById('chatSendBtn').disabled = false;
+        input.focus();
+    });
+}
+
+function escapeHTML(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderMarkdown(text) {
+    // 1) Strip leftover markdown junk
+    let clean = text
+        .replace(/^#{1,4}\s*/gm, '')
+        .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+        .replace(/\*(.+?)\*/g, '<i>$1</i>')
+        .replace(/^[\*\-]\s+/gm, '')
+        .replace(/^\s*[\*\-]\s+/gm, '');
+
+    // 2) Convert {term} or {{term}} → <b>term</b>
+    clean = clean.replace(/\{\{(.+?)\}\}/g, '<b>$1</b>');
+    clean = clean.replace(/\{([^}]{2,80})\}/g, '<b>$1</b>');
+
+    // 3) Split inline numbered items ONLY when multiple appear on same line
+    //    e.g. "1. Foo 2. Bar 3. Baz" → separate lines
+    clean = clean.replace(/(\S)\s+(\d+)\.\s+/g, '$1\n$2. ');
+
+    let lines = clean.split('\n');
+    let html = '';
+    let inOl = false;
+    let inSubOl = false;
+    let listItems = [];
+    let listId = 0;
+
+    function flushList() {
+        if (listItems.length === 0) return;
+        const SHOW_LIMIT = 10;
+        const needsMore = listItems.length > SHOW_LIMIT;
+        html += '<ol class="chat-num-list">';
+        listItems.forEach((item, idx) => {
+            if (needsMore && idx >= SHOW_LIMIT) {
+                if (idx === SHOW_LIMIT) {
+                    html += `</ol><div class="chat-show-more-wrap"><ol class="chat-num-list chat-hidden-list" id="moreList${listId}" start="${SHOW_LIMIT + 1}" style="display:none;">`;
+                }
+            }
+            html += '<li>' + item + '</li>';
+        });
+        if (needsMore) {
+            html += `</ol><button class="chat-show-more-btn" onclick="toggleMore(${listId}, this)">Show ${listItems.length - SHOW_LIMIT} more</button></div>`;
+            listId++;
+        } else {
+            html += '</ol>';
+        }
+        listItems = [];
+    }
+
+    // Helper: peek ahead to see if the next non-empty line is also a numbered item
+    function nextNonEmptyIsNumbered(fromIdx) {
+        for (let j = fromIdx + 1; j < lines.length; j++) {
+            let t = lines[j].trim();
+            if (t) return /^\d+\.\s+/.test(t);
+        }
+        return false;
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+        let line = lines[i].trim();
+
+        if (!line) {
+            // Only flush list on blank line if next content is NOT a numbered item
+            if (inOl && !nextNonEmptyIsNumbered(i)) {
+                if (inSubOl) { html += '</ol>'; inSubOl = false; }
+                flushList(); inOl = false;
+            }
+            if (inSubOl && !inOl) { html += '</ol>'; inSubOl = false; }
+            continue;
+        }
+
+        // Sub-point: a. b. c. (must be single letter at start of line)
+        let subMatch = line.match(/^([a-z])\.\s+(.+)/);
+        if (subMatch && subMatch[1].length === 1) {
+            if (!inSubOl) { html += '<ol class="chat-sub-list">'; inSubOl = true; }
+            html += '<li>' + subMatch[2] + '</li>';
+            continue;
+        }
+        if (inSubOl) { html += '</ol>'; inSubOl = false; }
+
+        // Numbered list: 1. 2. 3.
+        let numMatch = line.match(/^(\d+)\.\s+(.+)/);
+        if (numMatch) {
+            if (!inOl) { inOl = true; }
+            listItems.push(numMatch[2]);
+            continue;
+        }
+        if (inOl) { flushList(); inOl = false; }
+
+        // UPPERCASE heading
+        if (line === line.toUpperCase() && line.length > 3 && line.length < 80 && !/\d{3,}/.test(line)) {
+            html += '<h4 class="chat-heading">' + line.charAt(0) + line.slice(1).toLowerCase() + '</h4>';
+            continue;
+        }
+
+        // Regular paragraph
+        html += '<p>' + line + '</p>';
+    }
+
+    if (inSubOl) html += '</ol>';
+    if (inOl) flushList();
+    return html;
+}
+
+function toggleMore(id, btn) {
+    const el = document.getElementById('moreList' + id);
+    if (el.style.display === 'none') {
+        el.style.display = '';
+        btn.textContent = 'Show less';
+    } else {
+        el.style.display = 'none';
+        const count = el.querySelectorAll('li').length;
+        btn.textContent = 'Show ' + count + ' more';
+    }
+}
+</script>
+{% endblock %}

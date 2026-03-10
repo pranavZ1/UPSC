@@ -1,0 +1,41 @@
+# Python dependencies for UPSC Prelims Engine
+
+# LLM — Google Gemini
+google-genai>=0.3.0
+
+# PDF text extraction
+pypdf>=4.0.0
+
+# PDF page rendering (thumbnails, answer sheet images)
+PyMuPDF>=1.24.0
+
+# OCR (images / scanned PDFs)
+pytesseract>=0.3.10
+Pillow>=10.0.0
+
+# Token counting for chunking
+tiktoken>=0.6.0
+
+# HTML → PDF generation
+reportlab>=4.0.8
+
+# Web dashboard
+flask>=3.0.0
+werkzeug>=3.0.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Progress display (optional)
+tqdm>=4.66.0
+
+# RAG — Vector search for book chat
+faiss-cpu>=1.7.0
+numpy>=1.24.0
+
+# TTS — ElevenLabs voice generation
+elevenlabs>=0.2.0
+requests>=2.31.0
+
+# MongoDB Atlas — primary data store
+pymongo[srv]>=4.0.0

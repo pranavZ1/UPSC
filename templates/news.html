@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+{% block title %}News — UPSC Engine{% endblock %}
+
+{% block content %}
+<div class="news-page">
+    <!-- Header -->
+    <div class="news-header">
+        <div class="news-header-left">
+            <h1 class="news-title">
+                <span class="material-symbols-rounded" style="font-size:28px;color:#e53935;">newspaper</span>
+                Daily News Brief
+            </h1>
+            <p class="news-date">{{ news.date }}</p>
+        </div>
+        <a href="{{ url_for('news_refresh') }}" class="news-refresh-btn">
+            <span class="material-symbols-rounded" style="font-size:18px;">refresh</span> Refresh
+        </a>
+    </div>
+
+    <!-- ═══ Breaking News Carousel ═══ -->
+    {% if news.banners and news.banners|length > 0 %}
+    <section class="news-carousel-wrap">
+        <div class="news-carousel-label">
+            <span class="ncl-dot"></span> BREAKING &amp; KEY CURRENT AFFAIRS
+        </div>
+        <div class="news-carousel" id="newsCarousel">
+            <div class="news-carousel-track" id="carouselTrack">
+                {% for art in news.banners %}
+                <div class="news-slide" data-id="{{ art.id }}" data-title="{{ art.title }}" data-url="{{ art.link }}" data-summary="{{ art.summary }}">
+                    {% if art.image %}
+                    <div class="news-slide-img" style="background-image:url('{{ art.image }}')">
+                        <div class="news-slide-overlay"></div>
+                    </div>
+                    {% else %}
+                    <div class="news-slide-img news-slide-placeholder">
+                        <div class="news-slide-overlay"></div>
+                        <span class="material-symbols-rounded" style="font-size:48px;color:rgba(255,255,255,.3);position:relative;z-index:1;">newspaper</span>
+                    </div>
+                    {% endif %}
+                    <div class="news-slide-content">
+                        <div class="news-slide-meta">
+                            <span class="news-source-tag">{{ art.source }}</span>
+                            <span class="news-slide-cat">{{ art.category | replace('_',' ') | title }}</span>
+                        </div>
+                        <a href="{{ art.link }}" target="_blank" class="news-slide-title-link">
+                            <h2 class="news-slide-title">{{ art.title }}</h2>
+                        </a>
+                        <p class="news-slide-summary">{{ art.summary[:180] }}{% if art.summary|length > 180 %}...{% endif %}</p>
+                        <div class="news-slide-actions">
+                            <button class="news-ai-btn" onclick="analyzeNews(this)">
+                                <span class="material-symbols-rounded" style="font-size:14px;">auto_awesome</span> Analyze
+                            </button>
+                            <button class="news-dive-btn" onclick="deepDiveNews(this)">
+                                <span class="material-symbols-rounded" style="font-size:14px;">psychology</span> Deep Dive
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            <!-- Carousel controls -->
+            <button class="news-carousel-btn news-carousel-prev" onclick="carouselPrev()">
+                <span class="material-symbols-rounded">chevron_left</span>
+            </button>
+            <button class="news-carousel-btn news-carousel-next" onclick="carouselNext()">
+                <span class="material-symbols-rounded">chevron_right</span>
+            </button>
+            <!-- Dots -->
+            <div class="news-carousel-dots" id="carouselDots">
+                {% for art in news.banners %}
+                <button class="news-dot {% if loop.index0 == 0 %}active{% endif %}" onclick="goToSlide({{ loop.index0 }})"></button>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    <!-- ═══ Category Filter Bar ═══ -->
+    <div class="news-filter-bar" id="newsFilterBar">
+        <button class="news-filter-chip active" data-cat="all" onclick="filterCategory('all', this)">
+            <span class="material-symbols-rounded" style="font-size:16px;">apps</span> All News
+        </button>
+        {% set filter_config = [
+            ("international", "International", "public"),
+            ("polity", "Polity & Governance", "account_balance"),
+            ("economy", "Economy & Trade", "trending_up"),
+            ("science_tech", "Science & Tech", "biotech"),
+            ("environment", "Environment", "eco"),
+            ("defence", "Defence & Security", "shield"),
+            ("infrastructure", "Infrastructure", "construction"),
+            ("sports", "Sports", "sports_soccer"),
+        ] %}
+        {% for cat_key, cat_label, cat_icon in filter_config %}
+        {% if news.categories.get(cat_key, [])|length > 0 %}
+        <button class="news-filter-chip" data-cat="{{ cat_key }}" onclick="filterCategory('{{ cat_key }}', this)">
+            <span class="material-symbols-rounded" style="font-size:16px;">{{ cat_icon }}</span> {{ cat_label }}
+            <span class="nfc-count">{{ news.categories[cat_key]|length }}</span>
+        </button>
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    <!-- ═══ Category Sections ═══ -->
+    {% set category_config = [
+        ("international", "International Relations", "public", "#1565c0"),
+        ("polity", "Polity & Governance", "account_balance", "#e53935"),
+        ("economy", "Economy & Trade", "trending_up", "#2e7d32"),
+        ("science_tech", "Science & Technology", "biotech", "#7c4dff"),
+        ("environment", "Environment & Ecology", "eco", "#00897b"),
+        ("defence", "Defence & Security", "shield", "#d84315"),
+        ("infrastructure", "Infrastructure & Development", "construction", "#ef6c00"),
+        ("sports", "Sports", "sports_soccer", "#c62828"),
+    ] %}
+
+    {% for cat_key, cat_title, cat_icon, cat_color in category_config %}
+    {% if news.categories.get(cat_key, [])|length > 0 %}
+    <section class="news-section" data-section="{{ cat_key }}">
+        <div class="news-section-header">
+            <span class="material-symbols-rounded news-section-icon" style="color:{{ cat_color }};">{{ cat_icon }}</span>
+            <h2 class="news-section-title">{{ cat_title }}</h2>
+            <span class="news-section-count">{{ news.categories[cat_key]|length }} articles</span>
+        </div>
+        <div class="news-cards-grid">
+            {% for art in news.categories[cat_key] %}
+            <div class="news-card" data-id="{{ art.id }}" data-title="{{ art.title }}" data-url="{{ art.link }}" data-summary="{{ art.summary }}">
+                <div class="news-card-top">
+                    <span class="news-source-tag">{{ art.source }}</span>
+                    {% if art.published %}
+                    <span class="news-time">{{ art.published }}</span>
+                    {% endif %}
+                </div>
+                <a href="{{ art.link }}" target="_blank" class="news-card-title-link">
+                    <h4 class="news-card-title">{{ art.title }}</h4>
+                </a>
+                <p class="news-card-summary">{{ art.summary[:160] }}{% if art.summary|length > 160 %}...{% endif %}</p>
+                <div class="news-card-actions">
+                    <button class="news-ai-btn" onclick="analyzeNews(this)">
+                        <span class="material-symbols-rounded" style="font-size:14px;">auto_awesome</span> Analyze
+                    </button>
+                    <button class="news-dive-btn" onclick="deepDiveNews(this)">
+                        <span class="material-symbols-rounded" style="font-size:14px;">psychology</span> Deep Dive
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+    {% endfor %}
+</div>
+
+<!-- AI Analysis Modal -->
+<div class="news-modal-overlay" id="newsModal" onclick="if(event.target===this)closeModal()">
+    <div class="news-modal">
+        <div class="news-modal-header">
+            <h3 id="modalTitle">Analysis</h3>
+            <button class="news-modal-close" onclick="closeModal()">
+                <span class="material-symbols-rounded">close</span>
+            </button>
+        </div>
+        <div class="news-modal-body" id="modalBody">
+            <div class="news-modal-loading">
+                <div class="nb-loading-spinner"></div>
+                <span>AI is analyzing this article...</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ═══ Carousel ═══ */
+let currentSlide = 0;
+let slideCount = document.querySelectorAll('.news-slide').length;
+let autoTimer = null;
+
+function goToSlide(idx) {
+    currentSlide = ((idx % slideCount) + slideCount) % slideCount;
+    const track = document.getElementById('carouselTrack');
+    if (track) track.style.transform = `translateX(-${currentSlide * 100}%)`;
+    // Update dots
+    document.querySelectorAll('.news-dot').forEach((d, i) =>
+        d.classList.toggle('active', i === currentSlide));
+    resetAutoScroll();
+}
+
+function carouselNext() { goToSlide(currentSlide + 1); }
+function carouselPrev() { goToSlide(currentSlide - 1); }
+
+function resetAutoScroll() {
+    if (autoTimer) clearInterval(autoTimer);
+    if (slideCount > 1) {
+        autoTimer = setInterval(() => goToSlide(currentSlide + 1), 7000);
+    }
+}
+
+// Start auto-scroll on load
+if (slideCount > 1) resetAutoScroll();
+
+/* ═══ Category Filter ═══ */
+function filterCategory(cat, btn) {
+    // Update active chip
+    document.querySelectorAll('.news-filter-chip').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+
+    // Show / hide sections
+    document.querySelectorAll('.news-section').forEach(sec => {
+        if (cat === 'all') {
+            sec.style.display = '';
+        } else {
+            sec.style.display = sec.dataset.section === cat ? '' : 'none';
+        }
+    });
+}
+
+/* ═══ Utility ═══ */
+function getCardData(btn) {
+    const card = btn.closest('[data-id]');
+    return {
+        article_id: card.dataset.id,
+        title: card.dataset.title,
+        url: card.dataset.url,
+        summary: card.dataset.summary || '',
+    };
+}
+
+function openModal(title) {
+    document.getElementById('modalTitle').textContent = title;
+    document.getElementById('modalBody').innerHTML = `
+        <div class="news-modal-loading">
+            <div class="nb-loading-spinner"></div>
+            <span>AI is analyzing this article...</span>
+        </div>`;
+    document.getElementById('newsModal').classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+    document.getElementById('newsModal').classList.remove('open');
+    document.body.style.overflow = '';
+}
+
+function esc(str) {
+    if (!str) return '';
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
+/* ═══ AI Analysis ═══ */
+function analyzeNews(btn) {
+    const data = getCardData(btn);
+    openModal('AI Analysis');
+
+    fetch('/news/analyze', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data),
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.error) {
+            document.getElementById('modalBody').innerHTML = `<p class="news-modal-err">${esc(result.error)}</p>`;
+            return;
+        }
+        let html = `
+            <h4 class="nma-label">Summary</h4>
+            <p class="nma-text">${esc(result.summary)}</p>
+            <h4 class="nma-label">Key Points</h4>
+            <ul class="nma-list">
+                ${(result.key_points || []).map(p => `<li>${esc(p)}</li>`).join('')}
+            </ul>
+            <h4 class="nma-label">
+                <span class="material-symbols-rounded" style="font-size:16px;color:#7c4dff;vertical-align:middle;">school</span>
+                UPSC Relevance
+            </h4>
+            <p class="nma-upsc">${esc(result.upsc_relevance)}</p>
+        `;
+        document.getElementById('modalBody').innerHTML = html;
+    })
+    .catch(err => {
+        document.getElementById('modalBody').innerHTML = `<p class="news-modal-err">Error: ${esc(err.toString())}</p>`;
+    });
+}
+
+function deepDiveNews(btn) {
+    const data = getCardData(btn);
+    openModal('Deep Dive Analysis');
+
+    fetch('/news/deepdive', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data),
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.error) {
+            document.getElementById('modalBody').innerHTML = `<p class="news-modal-err">${esc(result.error)}</p>`;
+            return;
+        }
+        let html = `
+            <h4 class="nma-label">
+                <span class="material-symbols-rounded" style="font-size:16px;color:#1565c0;">history_edu</span>
+                Background
+            </h4>
+            <p class="nma-text">${esc(result.background)}</p>
+            <h4 class="nma-label">
+                <span class="material-symbols-rounded" style="font-size:16px;color:#e53935;">report</span>
+                Causes
+            </h4>
+            <ul class="nma-list nma-causes">
+                ${(result.causes || []).map(c => `<li>${esc(c)}</li>`).join('')}
+            </ul>
+            <h4 class="nma-label">
+                <span class="material-symbols-rounded" style="font-size:16px;color:#2e7d32;">impact</span>
+                Effects & Impact
+            </h4>
+            <ul class="nma-list nma-effects">
+                ${(result.effects || []).map(e => `<li>${esc(e)}</li>`).join('')}
+            </ul>
+            <h4 class="nma-label">
+                <span class="material-symbols-rounded" style="font-size:16px;color:#ef6c00;">trending_flat</span>
+                Implications & Outlook
+            </h4>
+            <p class="nma-text">${esc(result.implications)}</p>
+            <h4 class="nma-label">
+                <span class="material-symbols-rounded" style="font-size:16px;color:#7c4dff;">hub</span>
+                Connected UPSC Topics
+            </h4>
+            <div class="nma-tags">
+                ${(result.connected_topics || []).map(t => `<span class="nma-tag">${esc(t)}</span>`).join('')}
+            </div>
+        `;
+        document.getElementById('modalBody').innerHTML = html;
+    })
+    .catch(err => {
+        document.getElementById('modalBody').innerHTML = `<p class="news-modal-err">Error: ${esc(err.toString())}</p>`;
+    });
+}
+
+// Close modal on Escape
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeModal();
+});
+
+// Keyboard carousel navigation
+document.addEventListener('keydown', e => {
+    if (document.getElementById('newsModal').classList.contains('open')) return;
+    if (e.key === 'ArrowRight') carouselNext();
+    if (e.key === 'ArrowLeft') carouselPrev();
+});
+</script>
+{% endblock %}

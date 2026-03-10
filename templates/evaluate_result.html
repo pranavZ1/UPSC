@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}Evaluation Report — UPSC Study Engine{% endblock %}
+
+{% block content %}
+<!-- Report Header -->
+<div class="eval-rpt-header">
+    <div>
+        <h1 class="eval-rpt-title">📊 Evaluation Report</h1>
+        <div class="eval-rpt-meta">
+            <span class="eval-subject-badge">{{ eval_data.subject }}</span>
+            <span class="eval-rpt-date">{{ eval_data.created_at[:10] }}</span>
+            <span class="eval-rpt-date">{{ questions|length }} Question{{ 's' if questions|length > 1 else '' }}</span>
+        </div>
+    </div>
+    <div class="eval-score-ring {{ 'good' if score_pct >= 60 else 'avg' if score_pct >= 40 else 'low' }}">
+        <svg viewBox="0 0 100 100">
+            <circle class="ring-bg" cx="50" cy="50" r="42" />
+            <circle class="ring-fill" cx="50" cy="50" r="42"
+                    stroke-dasharray="263.9"
+                    stroke-dashoffset="{{ 263.9 * (1 - score_pct / 100) }}" />
+        </svg>
+        <div class="ring-text">
+            <span class="ring-score">{{ total_score|round(1) }}</span>
+            <span class="ring-max">/ {{ max_score|round(0)|int }}</span>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Score Cards -->
+<div class="eval-qscore-row">
+    {% for q in questions %}
+    {% set qpct = (q.score / q.max_marks * 100)|round(0)|int if q.max_marks else 0 %}
+    <a href="#q{{ loop.index }}" class="eval-qscore {{ 'good' if qpct >= 60 else 'avg' if qpct >= 40 else 'low' }}">
+        <span class="eval-qscore-label">{{ q.question_number|default('Q' ~ loop.index) }}</span>
+        <span class="eval-qscore-val">{{ q.score|round(1) }} <small>/ {{ q.max_marks }}</small></span>
+    </a>
+    {% endfor %}
+</div>
+
+<!-- Per-Question Evaluation -->
+{% for q in questions %}
+{% set qpct = (q.score / q.max_marks * 100)|round(0)|int if q.max_marks else 0 %}
+<div class="eval-q-card" id="q{{ loop.index }}">
+    <div class="eval-q-head">
+        <div class="eval-q-head-left">
+            <span class="eval-q-num">{{ q.question_number|default('Q' ~ loop.index) }}</span>
+            <span class="eval-q-score {{ 'good' if qpct >= 60 else 'avg' if qpct >= 40 else 'low' }}">
+                {{ q.score|round(1) }} / {{ q.max_marks }}
+            </span>
+        </div>
+    </div>
+
+    <p class="eval-q-text">{{ q.question_text|default('Question text not available') }}</p>
+
+    {% if q.answer_summary %}
+    <details class="eval-q-answer">
+        <summary>
+            <span class="material-symbols-rounded" style="font-size:18px;">description</span>
+            Your Answer <span class="eval-wc">({{ q.word_count|default('?') }} words)</span>
+        </summary>
+        <div class="eval-q-answer-body">{{ q.answer_summary }}</div>
+    </details>
+    {% endif %}
+
+    <div class="eval-analysis">
+        <h4 class="eval-analysis-title">Detailed Analysis</h4>
+
+        <!-- Key Strengths -->
+        {% if q.key_strengths %}
+        <div class="eval-block eval-block-green">
+            <h5>
+                <span class="material-symbols-rounded">thumb_up</span>
+                Key Strengths
+            </h5>
+            <ol>
+                {% for s in q.key_strengths %}
+                <li>{{ s }}</li>
+                {% endfor %}
+            </ol>
+        </div>
+        {% endif %}
+
+        <!-- Areas for Improvement -->
+        <div class="eval-block eval-block-amber">
+            <h5>
+                <span class="material-symbols-rounded">trending_up</span>
+                Areas for Improvement
+            </h5>
+
+            {% if q.areas_for_improvement.introduction %}
+            <div class="eval-improve-sec">
+                <h6>Introduction</h6>
+                <ol>
+                    {% for imp in q.areas_for_improvement.introduction %}
+                    <li>{{ imp }}</li>
+                    {% endfor %}
+                </ol>
+            </div>
+            {% endif %}
+
+            {% if q.areas_for_improvement.body %}
+            <div class="eval-improve-sec">
+                <h6>Body</h6>
+                <ol>
+                    {% for imp in q.areas_for_improvement.body %}
+                    <li>{{ imp }}</li>
+                    {% endfor %}
+                </ol>
+            </div>
+            {% endif %}
+
+            {% if q.areas_for_improvement.conclusion %}
+            <div class="eval-improve-sec">
+                <h6>Conclusion</h6>
+                <ol>
+                    {% for imp in q.areas_for_improvement.conclusion %}
+                    <li>{{ imp }}</li>
+                    {% endfor %}
+                </ol>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<!-- Overall Feedback -->
+{% if overall and overall.competencies %}
+<div class="eval-overall">
+    <h3 class="eval-overall-title">
+        <span class="material-symbols-rounded">analytics</span>
+        Overall Feedback
+    </h3>
+    <div class="eval-comp-grid">
+        {% set comp_list = [
+            ('contextual', 'Contextual Competence'),
+            ('content', 'Content Competence'),
+            ('language', 'Language Competence'),
+            ('introduction', 'Introduction Competence'),
+            ('presentation', 'Structured Presentation'),
+            ('conclusion', 'Conclusion Competence')
+        ] %}
+        {% for key, label in comp_list %}
+        {% set comp = overall.competencies[key] %}
+        {% if comp %}
+        <div class="eval-comp-card">
+            <h4>{{ label }}</h4>
+            {% if comp.strengths %}
+            <div class="eval-comp-section eval-comp-good">
+                <strong>Key Strengths:</strong>
+                <ul>
+                    {% for s in comp.strengths %}
+                    <li>{{ s }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+            {% if comp.improvements %}
+            <div class="eval-comp-section eval-comp-improve">
+                <strong>Areas to Improve:</strong>
+                <ul>
+                    {% for imp in comp.improvements %}
+                    <li>{{ imp }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Bottom Actions -->
+<div class="eval-actions">
+    <a href="{{ url_for('evaluate_page') }}" class="btn btn-primary btn-lg">
+        <span class="material-symbols-rounded">rate_review</span>
+        Evaluate New Answers
+    </a>
+</div>
+{% endblock %}

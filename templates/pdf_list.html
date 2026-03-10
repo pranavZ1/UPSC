@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }} — UPSC Study Engine{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2>{{ page_title }}</h2>
+        <p class="page-desc">{{ page_subtitle }}</p>
+    </div>
+    {% if pdfs %}
+    <span class="chip chip-muted">{{ pdfs|length }} PDF{{ 's' if pdfs|length != 1 }}</span>
+    {% endif %}
+</div>
+
+{% if pdfs %}
+<div class="pdf-grid">
+    {% for pdf in pdfs %}
+    <div class="pdf-card">
+        <div class="pdf-card-top" style="border-left: 3px solid {{ colors.get(pdf.stem, '#546e7a') }};">
+            <div class="pdf-icon-circle" style="background: {{ colors.get(pdf.stem, '#546e7a') }}15; color: {{ colors.get(pdf.stem, '#546e7a') }};">
+                <span class="material-symbols-rounded">picture_as_pdf</span>
+            </div>
+            <div class="pdf-meta">
+                <h4 class="pdf-name">{{ pdf.display_name }}</h4>
+                <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;">
+                    {% if pdf.paper %}
+                    <span class="gs-badge gs-badge-{{ pdf.paper|lower }}">{{ pdf.paper }}</span>
+                    {% endif %}
+                    <span class="topic-badge" style="background:{{ colors.get(pdf.stem, '#546e7a') }}18; color:{{ colors.get(pdf.stem, '#546e7a') }}; border: 1px solid {{ colors.get(pdf.stem, '#546e7a') }}33;">
+                        {{ category | replace('mains_', '') | replace('_', ' ') | title }}
+                    </span>
+                </div>
+            </div>
+        </div>
+        <div class="pdf-card-details">
+            <span class="pdf-detail">
+                <span class="material-symbols-rounded" style="font-size:14px;">hard_drive</span>
+                {{ pdf.size_kb }} KB
+            </span>
+            <span class="pdf-detail">
+                <span class="material-symbols-rounded" style="font-size:14px;">schedule</span>
+                {{ pdf.modified }}
+            </span>
+        </div>
+        <div class="pdf-card-actions">
+            <a href="{{ url_for('view_pdf', category=category, filename=pdf.filename) }}" class="btn btn-primary btn-sm">
+                <span class="material-symbols-rounded btn-icon">visibility</span>
+                View
+            </a>
+            <a href="{{ url_for('serve_pdf', category=category, filename=pdf.filename) }}" class="btn btn-outline btn-sm" download>
+                <span class="material-symbols-rounded btn-icon">download</span>
+                Download
+            </a>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <span class="material-symbols-rounded empty-state-icon">folder_off</span>
+    <h3>No {{ page_title }} Yet</h3>
+    <p>Upload study material from the <a href="{{ url_for('dashboard') }}" class="link">Dashboard</a> to generate PDFs.</p>
+</div>
+{% endif %}
+{% endblock %}

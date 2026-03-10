@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Evaluating... — UPSC Study Engine{% endblock %}
+
+{% block content %}
+<div class="eval-proc-wrap">
+    <div class="eval-proc-card">
+        <div class="eval-proc-spinner">
+            <svg viewBox="0 0 50 50">
+                <circle cx="25" cy="25" r="20" fill="none" stroke="#4361ee" stroke-width="4"
+                        stroke-dasharray="90,150" stroke-linecap="round">
+                    <animateTransform attributeName="transform" type="rotate"
+                                      values="0 25 25;360 25 25" dur="1s" repeatCount="indefinite"/>
+                </circle>
+            </svg>
+        </div>
+        <h2 class="eval-proc-title">Evaluating Your Answers...</h2>
+        <p class="eval-proc-sub">Our AI examiner is carefully reviewing your answers. This may take 30–60 seconds.</p>
+        <div class="eval-proc-tips" id="tips">
+            <p>💡 Include specific data and government schemes for higher scores</p>
+        </div>
+        <div class="eval-proc-progress">
+            <div class="eval-proc-bar"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const tips = [
+    "💡 Include specific data and government schemes for higher scores",
+    "💡 Always write a forward-looking conclusion linking to national goals",
+    "💡 Use diagrams and flowcharts to enhance your answer presentation",
+    "💡 Address all parts of the question directive explicitly",
+    "💡 Link topics to constitutional provisions and current policies",
+    "💡 Mention relevant committee reports and their recommendations",
+    "💡 Use specific examples rather than generic statements"
+];
+let idx = 0;
+setInterval(() => {
+    idx = (idx + 1) % tips.length;
+    document.getElementById('tips').innerHTML = '<p>' + tips[idx] + '</p>';
+}, 4000);
+
+// Poll for completion
+const evalId = "{{ eval_id }}";
+function checkStatus() {
+    fetch('/evaluate/check/' + evalId)
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'done') {
+                window.location.href = '/evaluate/result/' + evalId;
+            } else if (data.status === 'error') {
+                document.querySelector('.eval-proc-card').innerHTML =
+                    '<span class="material-symbols-rounded" style="font-size:48px;color:#e53935;">error</span>' +
+                    '<h2>Evaluation Failed</h2>' +
+                    '<p style="color:#666;margin:8px 0 20px;">' + (data.error || 'Something went wrong.') + '</p>' +
+                    '<a href="/evaluate" class="btn btn-primary">Try Again</a>';
+            } else {
+                setTimeout(checkStatus, 2500);
+            }
+        })
+        .catch(() => setTimeout(checkStatus, 3000));
+}
+setTimeout(checkStatus, 3000);
+</script>
+{% endblock %}

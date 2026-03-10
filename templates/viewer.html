@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ display_name }} — {{ category_label }}{% endblock %}
+
+{% block content %}
+<div class="viewer-header">
+    <a href="{{ url_for(back_endpoint|default(category ~ '_page')) }}" class="btn btn-ghost">
+        <span class="material-symbols-rounded btn-icon">arrow_back</span>
+        Back to {{ category_label }}
+    </a>
+    <div class="viewer-meta">
+        <span class="topic-badge" style="background:{{ color }}22; color:{{ color }}; border:1px solid {{ color }}44;">
+            {{ category_label }}
+        </span>
+        <h2>{{ display_name }}</h2>
+    </div>
+    <a href="{{ pdf_url }}" class="btn btn-outline" download="{{ filename }}">
+        <span class="material-symbols-rounded btn-icon">download</span>
+        Download
+    </a>
+</div>
+
+<div class="viewer-frame-wrap">
+    <iframe src="{{ pdf_url }}#toolbar=1&navpanes=0&scrollbar=1" class="viewer-frame" title="{{ display_name }}"></iframe>
+</div>
+{% endblock %}

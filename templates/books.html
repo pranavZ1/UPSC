@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Books — UPSC Study Engine{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">📚 Book Library</h1>
+        <p class="page-subtitle">Upload books, chat with AI, explore with NotebookLLM</p>
+    </div>
+</div>
+
+<!-- Upload Card -->
+<div class="card" style="margin-bottom:28px;">
+    <div class="card-header">
+        <h2 class="card-title">
+            <span class="material-symbols-rounded">upload_file</span>
+            Upload a Book
+        </h2>
+    </div>
+    <form action="{{ url_for('upload_book') }}" method="POST" enctype="multipart/form-data" class="book-upload-form">
+        <div class="book-upload-row">
+            <div class="book-upload-field">
+                <label class="field-label">Book Title (optional)</label>
+                <input type="text" name="title" placeholder="e.g. Laxmikanth — Indian Polity" class="form-input">
+            </div>
+            <div class="book-upload-field" style="flex:2;">
+                <label class="field-label">PDF File</label>
+                <div class="custom-file-upload" onclick="document.getElementById('bookFileInput').click()">
+                    <span class="material-symbols-rounded">cloud_upload</span>
+                    <span class="file-name" id="fileName">Choose a PDF file</span>
+                </div>
+                <input type="file" id="bookFileInput" name="book_file" accept=".pdf" required
+                       style="display:none;"
+                       onchange="document.getElementById('fileName').textContent = this.files[0]?.name || 'Choose a PDF file'">
+            </div>
+            <div class="book-upload-field" style="align-self:flex-end;">
+                <button type="submit" class="btn btn-primary">
+                    <span class="material-symbols-rounded" style="font-size:18px;">cloud_upload</span>
+                    Upload
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Books Grid -->
+<div class="book-grid">
+    {% if books %}
+    {% for book in books %}
+    <div class="book-card">
+        <div class="book-card-cover">
+            <img src="{{ url_for('serve_book_thumbnail', book_id=book.id) }}"
+                 alt="{{ book.title }}" class="book-thumb-img"
+                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+            <div class="book-thumb-fallback" style="display:none;">
+                <span class="material-symbols-rounded book-icon">auto_stories</span>
+            </div>
+            {% if book.error %}
+            <span class="book-status-badge book-error-badge">
+                <span class="material-symbols-rounded" style="font-size:14px;">error</span> Failed
+            </span>
+            {% elif book.indexing or (book.pipeline and book.pipeline.status == 'running') %}
+            <span class="book-status-badge indexing">
+                <span class="material-symbols-rounded spin" style="font-size:14px;">sync</span>
+                {{ book.pipeline.phase|default('Preparing', true)|title }}…
+            </span>
+            {% elif book.pipeline and book.pipeline.status == 'completed' %}
+            <span class="book-status-badge" style="background:rgba(76,175,80,0.85);">
+                <span class="material-symbols-rounded" style="font-size:14px;">check_circle</span> Ready
+            </span>
+            {% endif %}
+        </div>
+        <div class="book-card-body">
+            <h3 class="book-title">{{ book.title }}</h3>
+            <div class="book-meta">
+                <span>{{ (book.size_kb / 1024)|round(1) }} MB</span>
+                {% if book.page_count %}
+                <span>• {{ book.page_count }} pages</span>
+                {% endif %}
+            </div>
+            <div class="book-card-actions">
+                <a href="{{ url_for('book_viewer', book_id=book.id) }}" class="btn btn-sm btn-primary" title="Read & Chat">
+                    <span class="material-symbols-rounded" style="font-size:16px;">auto_stories</span>
+                    Read
+                </a>
+                {% if book.indexed or (book.pipeline and book.pipeline.status in ('running', 'completed')) %}
+                <a href="{{ url_for('notebook_page', book_id=book.id) }}" class="btn btn-sm btn-accent" title="NotebookLLM">
+                    <span class="material-symbols-rounded" style="font-size:16px;">psychology</span>
+                    Notebook
+                </a>
+                {% endif %}
+                {% if book.error %}
+                <form action="{{ url_for('reindex_book', book_id=book.id) }}" method="POST" style="display:inline;">
+                    <button type="submit" class="btn btn-sm btn-warning" title="Retry indexing">
+                        <span class="material-symbols-rounded" style="font-size:16px;">refresh</span>
+                        Retry
+                    </button>
+                </form>
+                {% endif %}
+                <a href="{{ url_for('delete_book_route', book_id=book.id) }}" class="btn btn-sm btn-danger"
+                   onclick="return confirm('Delete this book?')">
+                    <span class="material-symbols-rounded" style="font-size:16px;">delete</span>
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty-state">
+        <span class="material-symbols-rounded" style="font-size:48px;color:#9e9e9e;">library_books</span>
+        <p>No books uploaded yet. Upload a PDF to get started!</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

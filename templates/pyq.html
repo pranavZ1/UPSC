@@ -1,0 +1,777 @@
+{% extends 'base.html' %}
+{% block title %}Previous Year Papers — UPSC Prelims{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">📜 Previous Year Papers</h1>
+        <p class="page-subtitle">UPSC Prelims GS Paper I — 2015 to 2025 &middot; <span id="totalQCount">1100</span> Questions</p>
+    </div>
+</div>
+
+<!-- ── Loading overlay (classification) ─────────────────────── -->
+<div class="pyq-loading" id="pyqLoading">
+    <div class="card pyq-loading-card">
+        <div class="pyq-spinner"></div>
+        <h3>Preparing Question Bank</h3>
+        <p>Classifying questions by topic using AI&hellip;</p>
+        <div class="pyq-progress-track"><div class="pyq-progress-fill" id="classifyProgress"></div></div>
+        <p class="pyq-progress-text" id="classifyText">0 / 0 questions</p>
+        <p class="pyq-progress-note">This runs only once and takes about a minute.</p>
+    </div>
+</div>
+
+<!-- ── Main content (hidden until data ready) ───────────────── -->
+<div id="pyqContent" style="display:none;">
+
+    <!-- Mode tabs -->
+    <div class="pyq-tabs">
+        <button class="pyq-tab active" data-tab="study" onclick="switchPyqMode('study')">
+            <span class="material-symbols-rounded">menu_book</span> Study
+        </button>
+        <button class="pyq-tab" data-tab="quiz" onclick="switchPyqMode('quiz')">
+            <span class="material-symbols-rounded">quiz</span> Quiz
+        </button>
+    </div>
+
+    <!-- ═══ FILTER BAR ═══════════════════════════════════════ -->
+    <div class="card pyq-filter-bar" id="pyqFilterBar">
+        <div class="eval-section">
+            <label class="eval-label">Topics</label>
+            <div class="eval-pills" id="topicChips">
+                {% for topic in topics %}
+                <button class="pyq-chip eval-pill" data-value="{{ topic }}" onclick="toggleChip(this, 'topic')">{{ topic }}</button>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="eval-section">
+            <label class="eval-label">Years</label>
+            <div class="eval-pills" id="yearChips">
+                {% for year in years %}
+                <button class="pyq-chip eval-pill" data-value="{{ year }}" onclick="toggleChip(this, 'year')">{{ year }}</button>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="pyq-filter-actions">
+            <button class="btn btn-primary" onclick="applyStudyFilters()" id="applyBtn">
+                <span class="material-symbols-rounded">search</span> Show Questions
+            </button>
+            <button class="btn btn-ghost" onclick="clearFilters()">Clear All</button>
+            <span class="pyq-filter-count" id="filterCount"></span>
+        </div>
+    </div>
+
+    <!-- ═══ STUDY PANEL ══════════════════════════════════════ -->
+    <div id="studyPanel">
+        <div id="studyEmpty" class="empty-state">
+            <span class="material-symbols-rounded" style="font-size:48px;color:var(--text-3);">history_edu</span>
+            <h3>Browse Previous Year Questions</h3>
+            <p>Select topics and/or years above, then click <strong>Show Questions</strong></p>
+        </div>
+        <div id="studyResults" class="pyq-study-results"></div>
+    </div>
+
+    <!-- ═══ QUIZ PANEL ═══════════════════════════════════════ -->
+    <div id="quizPanel" style="display:none;">
+
+        <!-- Quiz mode selector -->
+        <div class="pyq-quiz-selector" id="quizModeCards">
+            <div class="card pyq-quiz-card" onclick="selectQuizType('quick')">
+                <span class="material-symbols-rounded">bolt</span>
+                <h3>Quick Quiz</h3>
+                <p>10 questions from selected topics &amp; years</p>
+            </div>
+            <div class="card pyq-quiz-card" onclick="selectQuizType('paper')">
+                <span class="material-symbols-rounded">description</span>
+                <h3>Full Paper</h3>
+                <p>Complete 100-question paper of a specific year</p>
+            </div>
+        </div>
+
+        <!-- Quick Quiz setup — uses above filter bar + start btn -->
+        <div id="quickQuizSetup" style="display:none;">
+            <div class="pyq-quiz-start-bar">
+                <button class="btn btn-primary pyq-btn-lg" onclick="startQuickQuiz()" id="startQuickBtn">
+                    <span class="material-symbols-rounded">play_arrow</span> Start Quiz
+                </button>
+                <span class="pyq-quiz-start-note" id="quickQuizNote">Select at least one topic or year</span>
+                <button class="btn btn-ghost" onclick="backToQuizModes()">
+                    <span class="material-symbols-rounded">arrow_back</span> Back
+                </button>
+            </div>
+        </div>
+
+        <!-- Full Paper setup — year grid -->
+        <div id="fullPaperSetup" style="display:none;">
+            <div class="card pyq-paper-setup">
+                <h3>Select a Year</h3>
+                <div class="pyq-year-grid">
+                    {% for year in years %}
+                    <button class="pyq-year-btn" data-year="{{ year }}" onclick="selectPaperYear({{ year }}, this)">{{ year }}</button>
+                    {% endfor %}
+                </div>
+                <div class="pyq-quiz-start-bar">
+                    <button class="btn btn-primary pyq-btn-lg" onclick="startFullPaper()" id="startPaperBtn" disabled>
+                        <span class="material-symbols-rounded">play_arrow</span> Start Full Paper (100 Qs)
+                    </button>
+                    <button class="btn btn-ghost" onclick="backToQuizModes()">
+                        <span class="material-symbols-rounded">arrow_back</span> Back
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Quiz area (shared) ──────────────────────────── -->
+        <div id="pyqQuizArea" style="display:none;">
+            <div class="pyq-quiz-header">
+                <span class="pyq-quiz-label" id="pyqQuizLabel">Quick Quiz</span>
+                <span class="pyq-quiz-timer" id="pyqTimer"></span>
+            </div>
+
+            <!-- Progress dots -->
+            <div class="pyq-quiz-dots-wrap">
+                <div class="pyq-quiz-dots" id="pyqDots"></div>
+            </div>
+
+            <!-- Progress bar -->
+            <div class="pyq-quiz-pbar">
+                <div class="pyq-quiz-pbar-fill" id="pyqPBar"></div>
+            </div>
+            <div class="pyq-quiz-ptext" id="pyqPText">Q1 / 10</div>
+
+            <!-- Question -->
+            <div class="card pyq-quiz-qcard">
+                <div class="pyq-quiz-meta" id="pyqMeta"></div>
+                <div class="pyq-quiz-qtext" id="pyqQText"></div>
+                <div class="pyq-quiz-opts" id="pyqOpts"></div>
+            </div>
+
+            <!-- Nav -->
+            <div class="pyq-quiz-nav">
+                <button class="btn btn-ghost" onclick="pyqPrev()" id="pyqPrevBtn" style="visibility:hidden;">
+                    <span class="material-symbols-rounded">arrow_back</span> Previous
+                </button>
+                <button class="btn btn-outline" onclick="pyqSkip()">Skip</button>
+                <button class="btn btn-primary" onclick="pyqNext()" id="pyqNextBtn" disabled>
+                    Next <span class="material-symbols-rounded">arrow_forward</span>
+                </button>
+                <button class="btn btn-accent" onclick="pyqFinish()" id="pyqFinishBtn" style="display:none;">
+                    Finish <span class="material-symbols-rounded">check_circle</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- ── Quiz results ────────────────────────────────── -->
+        <div id="pyqQuizResults" style="display:none;"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// PYQ — Previous Year Questions JS
+// ═══════════════════════════════════════════════════════════════════════════
+
+let allQuestions = [];
+let filteredQuestions = [];
+let pyqMode = 'study';        // 'study' | 'quiz'
+let quizType = '';             // 'quick' | 'paper'
+let qzQuestions = [];          // questions in active quiz
+let qzAnswers = [];            // user answers (letter or null)
+let qzIdx = 0;                // current question index
+let selectedPaperYear = null;
+let explanationCache = {};     // qid → explanation text
+let timerInterval = null;
+let timerSeconds = 0;
+
+// ── Helpers ─────────────────────────────────────────────────────────
+function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+function fmtQ(text) {
+    return esc(text).replace(/\n/g, '<br>');
+}
+
+// ── Data loading ────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', loadPyqData);
+
+function loadPyqData() {
+    fetch('/pyq/data')
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'ready') {
+                allQuestions = data.questions;
+                document.getElementById('pyqLoading').style.display = 'none';
+                document.getElementById('pyqContent').style.display = '';
+                document.getElementById('totalQCount').textContent = allQuestions.length;
+            } else if (data.status === 'classifying') {
+                updateClassifyProgress(data);
+                pollClassify();
+            } else if (data.status === 'error') {
+                document.getElementById('classifyText').textContent = 'Error: ' + (data.error || 'Unknown');
+            }
+        })
+        .catch(err => {
+            document.getElementById('classifyText').textContent = 'Error loading data: ' + err;
+        });
+}
+
+function pollClassify() {
+    const iv = setInterval(() => {
+        fetch('/pyq/classify-status')
+            .then(r => r.json())
+            .then(data => {
+                updateClassifyProgress(data);
+                if (data.status === 'ready') {
+                    clearInterval(iv);
+                    loadPyqData();  // re-fetch full data
+                } else if (data.status === 'error') {
+                    clearInterval(iv);
+                }
+            });
+    }, 2000);
+}
+
+function updateClassifyProgress(data) {
+    const pct = data.total > 0 ? Math.round((data.progress / data.total) * 100) : 0;
+    document.getElementById('classifyProgress').style.width = pct + '%';
+    document.getElementById('classifyText').textContent = `${data.progress || 0} / ${data.total || 0} questions`;
+}
+
+// ── Mode switching ──────────────────────────────────────────────────
+function switchPyqMode(mode) {
+    pyqMode = mode;
+    document.querySelectorAll('.pyq-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === mode));
+    document.getElementById('studyPanel').style.display = mode === 'study' ? '' : 'none';
+    document.getElementById('quizPanel').style.display = mode === 'quiz' ? '' : 'none';
+
+    // Show/hide filter bar based on mode
+    const filterBar = document.getElementById('pyqFilterBar');
+    if (mode === 'study') {
+        filterBar.style.display = '';
+        document.getElementById('applyBtn').style.display = '';
+    } else {
+        // In quiz mode, filter bar managed by quiz type
+        resetQuizPanel();
+    }
+}
+
+function resetQuizPanel() {
+    document.getElementById('quizModeCards').style.display = '';
+    document.getElementById('quickQuizSetup').style.display = 'none';
+    document.getElementById('fullPaperSetup').style.display = 'none';
+    document.getElementById('pyqQuizArea').style.display = 'none';
+    document.getElementById('pyqQuizResults').style.display = 'none';
+    document.getElementById('pyqFilterBar').style.display = 'none';
+    quizType = '';
+}
+
+// ── Filter chips ────────────────────────────────────────────────────
+function toggleChip(btn, type) {
+    btn.classList.toggle('active');
+    updateFilterCount();
+}
+
+function getSelectedTopics() {
+    return [...document.querySelectorAll('#topicChips .pyq-chip.active')].map(b => b.dataset.value);
+}
+
+function getSelectedYears() {
+    return [...document.querySelectorAll('#yearChips .pyq-chip.active')].map(b => parseInt(b.dataset.value));
+}
+
+function clearFilters() {
+    document.querySelectorAll('.pyq-chip.active').forEach(b => b.classList.remove('active'));
+    document.getElementById('filterCount').textContent = '';
+    selectedPaperYear = null;
+    document.querySelectorAll('.pyq-year-btn.active').forEach(b => b.classList.remove('active'));
+}
+
+function updateFilterCount() {
+    const t = getSelectedTopics().length;
+    const y = getSelectedYears().length;
+    const parts = [];
+    if (t) parts.push(t + ' topic' + (t > 1 ? 's' : ''));
+    if (y) parts.push(y + ' year' + (y > 1 ? 's' : ''));
+    document.getElementById('filterCount').textContent = parts.length ? parts.join(', ') + ' selected' : '';
+}
+
+function filterQuestions(topics, years) {
+    let qs = [...allQuestions];
+    if (topics.length > 0) {
+        qs = qs.filter(q => topics.includes(q.topic));
+    }
+    if (years.length > 0) {
+        qs = qs.filter(q => years.includes(q.year));
+    }
+    // Sort latest first
+    qs.sort((a, b) => b.year - a.year || a.question_number - b.question_number);
+    return qs;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// STUDY MODE
+// ═══════════════════════════════════════════════════════════════════════
+
+function applyStudyFilters() {
+    const topics = getSelectedTopics();
+    const years = getSelectedYears();
+    if (!topics.length && !years.length) {
+        alert('Please select at least one topic or year.');
+        return;
+    }
+    filteredQuestions = filterQuestions(topics, years);
+    document.getElementById('studyEmpty').style.display = 'none';
+    renderStudyResults();
+}
+
+function renderStudyResults() {
+    const container = document.getElementById('studyResults');
+    if (!filteredQuestions.length) {
+        container.innerHTML = '<div class="empty-state"><span class="material-symbols-rounded" style="font-size:40px;color:var(--text-3);">search_off</span><p>No questions match your filters.</p></div>';
+        return;
+    }
+
+    let html = `<div class="pyq-results-header"><span>${filteredQuestions.length} question${filteredQuestions.length > 1 ? 's' : ''} found</span></div>`;
+
+    filteredQuestions.forEach((q, idx) => {
+        const optHtml = Object.entries(q.options).map(([k, v]) =>
+            `<div class="pyq-study-opt" data-key="${k}">${esc(k.toUpperCase())}) ${fmtQ(v)}</div>`
+        ).join('');
+
+        html += `
+        <div class="card pyq-study-card" id="studyCard${idx}">
+            <div class="pyq-study-card-head">
+                <span class="pyq-badge pyq-badge-year">${q.year}</span>
+                <span class="pyq-badge pyq-badge-topic">${esc(q.topic)}</span>
+                <span class="pyq-study-qnum">Q${q.question_number}</span>
+            </div>
+            <div class="pyq-study-qtext">${fmtQ(q.question)}</div>
+            <div class="pyq-study-opts">${optHtml}</div>
+            <button class="btn btn-outline btn-sm" onclick="toggleStudyAnswer(${idx})">
+                <span class="material-symbols-rounded" style="font-size:16px;">visibility</span> Show Answer
+            </button>
+            <div class="pyq-study-answer" id="studyAns${idx}" style="display:none;">
+                <div class="pyq-study-correct">
+                    <span class="material-symbols-rounded">check_circle</span>
+                    Correct Answer: <strong>${(q.answer || '?').toUpperCase()}</strong> — ${esc(q.options[q.answer] || 'N/A')}
+                </div>
+                <button class="btn btn-outline btn-sm" onclick="loadExplanation('${q.id}', ${idx})" id="explainBtn${idx}">
+                    <span class="material-symbols-rounded" style="font-size:16px;">lightbulb</span> Show Explanation
+                </button>
+                <div class="pyq-study-explanation" id="studyExplain${idx}"></div>
+            </div>
+        </div>`;
+    });
+
+    container.innerHTML = html;
+    container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function toggleStudyAnswer(idx) {
+    const el = document.getElementById('studyAns' + idx);
+    const btn = el.previousElementSibling;
+    const showing = el.style.display !== 'none';
+    el.style.display = showing ? 'none' : '';
+    btn.innerHTML = showing
+        ? '<span class="material-symbols-rounded" style="font-size:16px;">visibility</span> Show Answer'
+        : '<span class="material-symbols-rounded" style="font-size:16px;">visibility_off</span> Hide Answer';
+
+    // Highlight correct option
+    const card = document.getElementById('studyCard' + idx);
+    const q = filteredQuestions[idx];
+    card.querySelectorAll('.pyq-study-opt').forEach(opt => {
+        opt.classList.toggle('pyq-study-opt-correct', opt.dataset.key === q.answer && !showing);
+    });
+}
+
+function loadExplanation(qid, idx) {
+    const el = document.getElementById('studyExplain' + idx);
+    const btn = document.getElementById('explainBtn' + idx);
+
+    if (explanationCache[qid]) {
+        el.innerHTML = `<div class="pyq-explain-text"><span class="material-symbols-rounded" style="font-size:16px;vertical-align:middle;color:var(--primary);">lightbulb</span> ${fmtQ(explanationCache[qid])}</div>`;
+        btn.style.display = 'none';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="pyq-mini-spinner"></span> Generating...';
+    el.innerHTML = '';
+
+    const q = filteredQuestions[idx];
+    fetch('/pyq/explain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            question_id: q.id,
+            question: q.question,
+            options: q.options,
+            answer: q.answer,
+        }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) {
+            el.innerHTML = `<div class="pyq-explain-error">Error: ${esc(data.error)}</div>`;
+            btn.disabled = false;
+            btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px;">lightbulb</span> Retry';
+            return;
+        }
+        explanationCache[qid] = data.explanation;
+        el.innerHTML = `<div class="pyq-explain-text"><span class="material-symbols-rounded" style="font-size:16px;vertical-align:middle;color:var(--primary);">lightbulb</span> ${fmtQ(data.explanation)}</div>`;
+        btn.style.display = 'none';
+    })
+    .catch(err => {
+        el.innerHTML = `<div class="pyq-explain-error">Error: ${err}</div>`;
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px;">lightbulb</span> Retry';
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// QUIZ MODE
+// ═══════════════════════════════════════════════════════════════════════
+
+function selectQuizType(type) {
+    quizType = type;
+    document.getElementById('quizModeCards').style.display = 'none';
+
+    if (type === 'quick') {
+        document.getElementById('pyqFilterBar').style.display = '';
+        document.getElementById('applyBtn').style.display = 'none';
+        document.getElementById('quickQuizSetup').style.display = '';
+        document.getElementById('fullPaperSetup').style.display = 'none';
+    } else {
+        document.getElementById('pyqFilterBar').style.display = 'none';
+        document.getElementById('quickQuizSetup').style.display = 'none';
+        document.getElementById('fullPaperSetup').style.display = '';
+    }
+}
+
+function backToQuizModes() {
+    resetQuizPanel();
+    clearFilters();
+}
+
+function selectPaperYear(year, btn) {
+    document.querySelectorAll('.pyq-year-btn.active').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedPaperYear = year;
+    document.getElementById('startPaperBtn').disabled = false;
+}
+
+function startQuickQuiz() {
+    const topics = getSelectedTopics();
+    const years = getSelectedYears();
+    if (!topics.length && !years.length) {
+        alert('Select at least one topic or year.');
+        return;
+    }
+    let pool = filterQuestions(topics, years);
+    if (!pool.length) { alert('No questions match your filters.'); return; }
+
+    // Shuffle and pick up to 10
+    for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    launchQuiz(pool.slice(0, 10), 'Quick Quiz (' + (topics.length ? topics.join(', ') : 'All Topics') + ')');
+}
+
+function startFullPaper() {
+    if (!selectedPaperYear) return;
+    const pool = allQuestions.filter(q => q.year === selectedPaperYear);
+    pool.sort((a, b) => a.question_number - b.question_number);
+    launchQuiz(pool, `UPSC Prelims ${selectedPaperYear} — Full Paper`);
+}
+
+function launchQuiz(questions, label) {
+    qzQuestions = questions;
+    qzAnswers = new Array(questions.length).fill(null);
+    qzIdx = 0;
+    timerSeconds = 0;
+
+    document.getElementById('quickQuizSetup').style.display = 'none';
+    document.getElementById('fullPaperSetup').style.display = 'none';
+    document.getElementById('pyqFilterBar').style.display = 'none';
+    document.getElementById('pyqQuizArea').style.display = '';
+    document.getElementById('pyqQuizResults').style.display = 'none';
+    document.getElementById('pyqQuizLabel').textContent = label;
+
+    renderDots();
+    showQuestion(0);
+    startTimer();
+}
+
+// ── Timer ───────────────────────────────────────────────────────────
+function startTimer() {
+    clearInterval(timerInterval);
+    timerSeconds = 0;
+    timerInterval = setInterval(() => {
+        timerSeconds++;
+        const m = Math.floor(timerSeconds / 60);
+        const s = timerSeconds % 60;
+        document.getElementById('pyqTimer').textContent =
+            (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+    }, 1000);
+}
+
+function stopTimer() { clearInterval(timerInterval); }
+
+// ── Dots ────────────────────────────────────────────────────────────
+function renderDots() {
+    const wrap = document.getElementById('pyqDots');
+    // For > 20 questions, use compact dots
+    const isCompact = qzQuestions.length > 20;
+    wrap.className = 'pyq-quiz-dots' + (isCompact ? ' pyq-dots-compact' : '');
+    wrap.innerHTML = qzQuestions.map((_, i) =>
+        `<span class="pyq-dot" onclick="jumpToQ(${i})" title="Q${i+1}">${isCompact ? '' : (i+1)}</span>`
+    ).join('');
+    updateDots();
+}
+
+function updateDots() {
+    document.querySelectorAll('#pyqDots .pyq-dot').forEach((d, i) => {
+        d.className = 'pyq-dot';
+        if (i === qzIdx) d.classList.add('pyq-dot-current');
+        if (qzAnswers[i] !== null) d.classList.add('pyq-dot-answered');
+    });
+}
+
+function jumpToQ(idx) { showQuestion(idx); }
+
+// ── Question rendering ──────────────────────────────────────────────
+function showQuestion(idx) {
+    qzIdx = idx;
+    const q = qzQuestions[idx];
+    const total = qzQuestions.length;
+
+    // Meta
+    document.getElementById('pyqMeta').innerHTML =
+        `<span class="pyq-badge pyq-badge-year">${q.year}</span><span class="pyq-badge pyq-badge-topic">${esc(q.topic)}</span><span>Q${q.question_number}</span>`;
+
+    // Progress
+    document.getElementById('pyqPText').textContent = `Question ${idx + 1} / ${total}`;
+    document.getElementById('pyqPBar').style.width = ((idx + 1) / total * 100) + '%';
+
+    // Question text
+    document.getElementById('pyqQText').innerHTML = fmtQ(q.question);
+
+    // Options
+    const keys = ['a', 'b', 'c', 'd'];
+    document.getElementById('pyqOpts').innerHTML = keys.map(k =>
+        `<button class="pyq-quiz-opt${qzAnswers[idx] === k ? ' pyq-opt-selected' : ''}" data-key="${k}" onclick="selectOpt('${k}')">
+            <span class="pyq-opt-letter">${k.toUpperCase()}</span>
+            <span class="pyq-opt-text">${fmtQ(q.options[k])}</span>
+        </button>`
+    ).join('');
+
+    // Nav buttons
+    document.getElementById('pyqPrevBtn').style.visibility = idx > 0 ? 'visible' : 'hidden';
+    const isLast = idx === total - 1;
+    document.getElementById('pyqNextBtn').style.display = isLast ? 'none' : '';
+    document.getElementById('pyqFinishBtn').style.display = isLast ? '' : 'none';
+    document.getElementById('pyqNextBtn').disabled = qzAnswers[idx] === null;
+
+    updateDots();
+}
+
+function selectOpt(key) {
+    qzAnswers[qzIdx] = key;
+    document.querySelectorAll('#pyqOpts .pyq-quiz-opt').forEach(b => {
+        b.classList.toggle('pyq-opt-selected', b.dataset.key === key);
+    });
+    document.getElementById('pyqNextBtn').disabled = false;
+    updateDots();
+}
+
+function pyqNext() { if (qzIdx < qzQuestions.length - 1) showQuestion(qzIdx + 1); }
+function pyqPrev() { if (qzIdx > 0) showQuestion(qzIdx - 1); }
+function pyqSkip() {
+    qzAnswers[qzIdx] = null;
+    if (qzIdx < qzQuestions.length - 1) showQuestion(qzIdx + 1);
+    else pyqFinish();
+}
+function pyqFinish() {
+    // Check unanswered
+    const unanswered = qzAnswers.filter(a => a === null).length;
+    if (unanswered > 0) {
+        if (!confirm(`You have ${unanswered} unanswered question${unanswered > 1 ? 's' : ''}. Submit anyway?`)) return;
+    }
+    stopTimer();
+    showQuizResults();
+}
+
+// ── Results ─────────────────────────────────────────────────────────
+function showQuizResults() {
+    document.getElementById('pyqQuizArea').style.display = 'none';
+    document.getElementById('pyqQuizResults').style.display = '';
+
+    let correct = 0, incorrect = 0, skipped = 0;
+    qzQuestions.forEach((q, i) => {
+        if (qzAnswers[i] === null) skipped++;
+        else if (q.answer && qzAnswers[i] === q.answer) correct++;
+        else incorrect++;
+    });
+
+    const total = qzQuestions.length;
+    const pct = Math.round((correct / total) * 100);
+    const timeStr = document.getElementById('pyqTimer').textContent;
+
+    let grade = '';
+    if (pct >= 80) grade = 'Excellent!';
+    else if (pct >= 60) grade = 'Good job!';
+    else if (pct >= 40) grade = 'Needs improvement';
+    else grade = 'Keep studying!';
+
+    let html = `
+    <div class="card pyq-score-card">
+        <h2>Quiz Complete</h2>
+        <div class="pyq-score-ring">
+            <svg viewBox="0 0 120 120" width="120" height="120">
+                <circle cx="60" cy="60" r="52" fill="none" stroke="var(--border)" stroke-width="8"/>
+                <circle cx="60" cy="60" r="52" fill="none"
+                    stroke="${pct >= 60 ? 'var(--success)' : pct >= 40 ? 'var(--warning)' : 'var(--danger)'}"
+                    stroke-width="8" stroke-linecap="round"
+                    stroke-dasharray="${2 * Math.PI * 52}"
+                    stroke-dashoffset="${2 * Math.PI * 52 * (1 - pct / 100)}"
+                    transform="rotate(-90 60 60)"/>
+            </svg>
+            <span class="pyq-score-pct">${pct}%</span>
+        </div>
+        <p class="pyq-score-grade">${grade}</p>
+        <div class="pyq-score-stats">
+            <div class="pyq-stat pyq-stat-correct"><span class="material-symbols-rounded">check_circle</span> ${correct} Correct</div>
+            <div class="pyq-stat pyq-stat-wrong"><span class="material-symbols-rounded">cancel</span> ${incorrect} Wrong</div>
+            <div class="pyq-stat pyq-stat-skip"><span class="material-symbols-rounded">remove_circle</span> ${skipped} Skipped</div>
+        </div>
+        <p class="pyq-score-time">Time: ${timeStr}</p>
+        <button class="btn btn-primary" onclick="retakePyqQuiz()">
+            <span class="material-symbols-rounded" style="font-size:18px;">refresh</span> Retake
+        </button>
+        <button class="btn btn-ghost" onclick="backToQuizModes()">Back to Quiz Menu</button>
+    </div>
+    <h3 class="pyq-review-heading">Answer Review</h3>
+    <div class="pyq-review-list">`;
+
+    qzQuestions.forEach((q, i) => {
+        const ans = qzAnswers[i];
+        let status, cls, icon;
+        if (ans === null) { status = 'Skipped'; cls = 'pyq-rev-skip'; icon = 'remove_circle'; }
+        else if (q.answer && ans === q.answer) { status = 'Correct'; cls = 'pyq-rev-correct'; icon = 'check_circle'; }
+        else { status = 'Incorrect'; cls = 'pyq-rev-wrong'; icon = 'cancel'; }
+
+        const optReview = Object.entries(q.options).map(([k, v]) => {
+            let ocls = 'pyq-rev-opt';
+            if (k === q.answer) ocls += ' pyq-rev-opt-correct';
+            if (k === ans && ans !== q.answer) ocls += ' pyq-rev-opt-wrong';
+            let oIcon = '';
+            if (k === q.answer) oIcon = '<span class="material-symbols-rounded" style="font-size:15px;color:var(--success);">check_circle</span>';
+            else if (k === ans && ans !== q.answer) oIcon = '<span class="material-symbols-rounded" style="font-size:15px;color:var(--danger);">cancel</span>';
+            return `<div class="${ocls}">${oIcon} ${esc(k.toUpperCase())}) ${fmtQ(v)}</div>`;
+        }).join('');
+
+        html += `
+        <div class="pyq-rev-item ${cls}" onclick="toggleRevItem(this)">
+            <div class="pyq-rev-head">
+                <span class="pyq-rev-num">Q${i + 1}</span>
+                <span class="pyq-rev-badge pyq-badge-year">${q.year}</span>
+                <span class="pyq-rev-q">${esc(q.question).substring(0, 120)}${q.question.length > 120 ? '...' : ''}</span>
+                <span class="material-symbols-rounded pyq-rev-icon">${icon}</span>
+            </div>
+            <div class="pyq-rev-detail" style="display:none;">
+                <div class="pyq-rev-full-q">${fmtQ(q.question)}</div>
+                <div class="pyq-rev-opts">${optReview}</div>
+                ${ans !== null && ans !== q.answer ? `<div class="pyq-rev-your-ans">Your answer: ${esc(ans.toUpperCase())}) ${esc(q.options[ans])}</div>` : ''}
+                <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); loadRevExplanation('${q.id}', this)">
+                    <span class="material-symbols-rounded" style="font-size:16px;">lightbulb</span> Explanation
+                </button>
+                <div class="pyq-rev-explain" data-qid="${q.id}"></div>
+            </div>
+        </div>`;
+    });
+
+    html += '</div>';
+    document.getElementById('pyqQuizResults').innerHTML = html;
+    document.getElementById('pyqQuizResults').scrollIntoView({ behavior: 'smooth' });
+}
+
+function toggleRevItem(el) {
+    const detail = el.querySelector('.pyq-rev-detail');
+    const isOpen = detail.style.display !== 'none';
+    detail.style.display = isOpen ? 'none' : '';
+    el.classList.toggle('pyq-rev-expanded', !isOpen);
+}
+
+function loadRevExplanation(qid, btn) {
+    const container = btn.nextElementSibling;
+    if (explanationCache[qid]) {
+        container.innerHTML = `<div class="pyq-explain-text"><span class="material-symbols-rounded" style="font-size:16px;vertical-align:middle;color:var(--primary);">lightbulb</span> ${fmtQ(explanationCache[qid])}</div>`;
+        btn.style.display = 'none';
+        return;
+    }
+    btn.disabled = true;
+    btn.innerHTML = '<span class="pyq-mini-spinner"></span> Generating...';
+
+    const q = qzQuestions.find(q => q.id === qid) || allQuestions.find(q => q.id === qid);
+    if (!q) { container.innerHTML = '<div class="pyq-explain-error">Question not found</div>'; return; }
+
+    fetch('/pyq/explain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question_id: q.id, question: q.question, options: q.options, answer: q.answer }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) {
+            container.innerHTML = `<div class="pyq-explain-error">${esc(data.error)}</div>`;
+            btn.disabled = false;
+            btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px;">lightbulb</span> Retry';
+            return;
+        }
+        explanationCache[qid] = data.explanation;
+        container.innerHTML = `<div class="pyq-explain-text"><span class="material-symbols-rounded" style="font-size:16px;vertical-align:middle;color:var(--primary);">lightbulb</span> ${fmtQ(data.explanation)}</div>`;
+        btn.style.display = 'none';
+    })
+    .catch(err => {
+        container.innerHTML = `<div class="pyq-explain-error">${err}</div>`;
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px;">lightbulb</span> Retry';
+    });
+}
+
+function retakePyqQuiz() {
+    // Reshuffle and relaunch same pool
+    for (let i = qzQuestions.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [qzQuestions[i], qzQuestions[j]] = [qzQuestions[j], qzQuestions[i]];
+    }
+    qzAnswers = new Array(qzQuestions.length).fill(null);
+    qzIdx = 0;
+    timerSeconds = 0;
+    document.getElementById('pyqQuizResults').style.display = 'none';
+    document.getElementById('pyqQuizArea').style.display = '';
+    renderDots();
+    showQuestion(0);
+    startTimer();
+}
+
+// ── Keyboard shortcuts ──────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+    if (document.getElementById('pyqQuizArea').style.display === 'none') return;
+    const keys = { '1': 'a', '2': 'b', '3': 'c', '4': 'd' };
+    if (keys[e.key]) { e.preventDefault(); selectOpt(keys[e.key]); }
+    if (e.key === 'Enter' && qzAnswers[qzIdx] !== null) {
+        e.preventDefault();
+        if (qzIdx < qzQuestions.length - 1) pyqNext(); else pyqFinish();
+    }
+    if (e.key === 'ArrowRight') { e.preventDefault(); pyqNext(); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); pyqPrev(); }
+    if (e.key === 's' || e.key === 'S') { e.preventDefault(); pyqSkip(); }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,51 @@
+# ─── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+
+# ─── Virtual environments ─────────────────────────────────────
+venv/
+env/
+.venv/
+.env
+
+# ─── IDE / Editor ─────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ─── OS files ─────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── Generated output (articles, PDFs, debug) ────────────────
+output/
+input/
+
+# ─── Books local cache ───────────────────────────────────────
+books/indexes/
+
+# ─── News & PYQ caches ───────────────────────────────────────
+news_cache/
+pyq/cache/
+
+# ─── Legacy registry files ───────────────────────────────────
+article_registry.json
+book_registry.json
+
+# ─── Logs ─────────────────────────────────────────────────────
+*.log
+
+# ─── Test / scratch files ─────────────────────────────────────
+_test_*
+
+# ─── Secrets ──────────────────────────────────────────────────
+.env
+*.env

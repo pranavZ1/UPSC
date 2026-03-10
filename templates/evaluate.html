@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Answer Review — UPSC Study Engine{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">📝 Answer Review</h1>
+        <p class="page-subtitle">Get AI-powered feedback on your UPSC Mains answers</p>
+    </div>
+</div>
+
+<!-- Evaluation Form -->
+<div class="card eval-card">
+    <div class="card-header">
+        <h2 class="card-title">
+            <span class="material-symbols-rounded">rate_review</span>
+            Evaluate Your Answers
+        </h2>
+    </div>
+
+    <form id="evalForm" action="{{ url_for('evaluate_submit') }}" method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="input_method" id="inputMethod" value="text">
+
+        <!-- Subject -->
+        <div class="eval-section">
+            <label class="eval-label">Subject</label>
+            <div class="eval-pills">
+                <input type="radio" name="subject" value="GS1" id="subGS1" checked>
+                <label for="subGS1" class="eval-pill">GS1</label>
+                <input type="radio" name="subject" value="GS2" id="subGS2">
+                <label for="subGS2" class="eval-pill">GS2</label>
+                <input type="radio" name="subject" value="GS3" id="subGS3">
+                <label for="subGS3" class="eval-pill">GS3</label>
+                <input type="radio" name="subject" value="GS4" id="subGS4">
+                <label for="subGS4" class="eval-pill">GS4</label>
+                <input type="radio" name="subject" value="Essay" id="subEssay">
+                <label for="subEssay" class="eval-pill">Essay</label>
+            </div>
+        </div>
+
+        <!-- Config row -->
+        <div class="eval-config-row">
+            <div class="eval-section">
+                <label class="eval-label">Questions</label>
+                <input type="number" name="question_count" value="1" min="1" max="20" class="form-input eval-num-input">
+            </div>
+            <div class="eval-section">
+                <label class="eval-label">Max Marks / Question</label>
+                <div class="eval-pills">
+                    <input type="radio" name="max_marks" value="10" id="m10" checked>
+                    <label for="m10" class="eval-pill sm">10</label>
+                    <input type="radio" name="max_marks" value="15" id="m15">
+                    <label for="m15" class="eval-pill sm">15</label>
+                    <input type="radio" name="max_marks" value="20" id="m20">
+                    <label for="m20" class="eval-pill sm">20</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input tabs -->
+        <div class="eval-section">
+            <label class="eval-label">Answer Sheet</label>
+            <div class="eval-tab-bar">
+                <button type="button" class="eval-tab active" data-target="text" onclick="switchEvalTab('text')">
+                    <span class="material-symbols-rounded" style="font-size:18px;">edit_note</span>
+                    Paste Text
+                </button>
+                <button type="button" class="eval-tab" data-target="file" onclick="switchEvalTab('file')">
+                    <span class="material-symbols-rounded" style="font-size:18px;">upload_file</span>
+                    Upload File
+                </button>
+            </div>
+
+            <!-- Text panel -->
+            <div class="eval-panel" id="evalTextPanel">
+                <textarea name="answer_text" rows="14" class="eval-textarea"
+                    placeholder="Paste your question(s) and answer(s) here...
+
+Example format:
+
+Q1. Discuss the role of ICAR in Indian agriculture. (10 marks)
+
+Answer: ICAR was established on 16 July 1929 on the recommendation of the Linlithgow Commission..."></textarea>
+                <p class="eval-hint">
+                    <span class="material-symbols-rounded" style="font-size:14px;">lightbulb</span>
+                    Include question numbers and text along with your answers for best evaluation
+                </p>
+            </div>
+
+            <!-- File panel -->
+            <div class="eval-panel" id="evalFilePanel" style="display:none;">
+                <div class="eval-dropzone" id="evalDropzone">
+                    <span class="material-symbols-rounded eval-drop-icon">cloud_upload</span>
+                    <p class="eval-drop-main">
+                        <span class="eval-drop-link" onclick="document.getElementById('evalFileInput').click()">Choose file</span>
+                        or drag and drop
+                    </p>
+                    <p class="eval-drop-hint">PDF, JPEG, JPG, PNG up to 22MB</p>
+                </div>
+                <input type="file" id="evalFileInput" name="answer_file"
+                       accept=".pdf,.jpg,.jpeg,.png" style="display:none;"
+                       onchange="handleEvalFile(this)">
+                <div class="eval-file-info" id="evalFileInfo" style="display:none;">
+                    <span class="material-symbols-rounded" style="color:#4361ee;">description</span>
+                    <span id="evalFileName"></span>
+                    <button type="button" onclick="clearEvalFile()" class="eval-file-clear">
+                        <span class="material-symbols-rounded">close</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Info banner -->
+        <div class="eval-info">
+            <span class="material-symbols-rounded">info</span>
+            Ensure each question in your submission has the Question text, Question Number, and Maximum Marks for best results.
+        </div>
+
+        <!-- Submit -->
+        <button type="submit" class="eval-submit" id="evalSubmitBtn">
+            <span class="material-symbols-rounded">rate_review</span>
+            Evaluate
+        </button>
+    </form>
+</div>
+
+<!-- Recent Evaluations -->
+{% if recent_evals %}
+<h2 class="section-title" style="margin-top:36px;">Recent Evaluations</h2>
+<div class="eval-history-grid">
+    {% for ev in recent_evals %}
+    {% set pct = (ev.total_score / ev.max_score * 100)|round(0)|int if ev.max_score else 0 %}
+    <a href="{{ url_for('evaluate_result', eval_id=ev.id) }}" class="eval-history-card">
+        <div class="eval-hist-score {{ 'good' if pct >= 60 else 'avg' if pct >= 40 else 'low' }}">
+            {{ ev.total_score|round(1) }}
+            <small>/ {{ ev.max_score|round(0)|int }}</small>
+        </div>
+        <div class="eval-hist-meta">
+            <span class="eval-hist-subject">{{ ev.subject }}</span>
+            <span class="eval-hist-qs">{{ ev.question_count }} Q{{ 's' if ev.question_count > 1 else '' }}</span>
+        </div>
+        <div class="eval-hist-date">{{ ev.created_at[:10] }}</div>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function switchEvalTab(tab) {
+    document.querySelectorAll('.eval-tab').forEach(t => t.classList.toggle('active', t.dataset.target === tab));
+    document.getElementById('evalTextPanel').style.display = tab === 'text' ? '' : 'none';
+    document.getElementById('evalFilePanel').style.display = tab === 'file' ? '' : 'none';
+    document.getElementById('inputMethod').value = tab;
+}
+
+function handleEvalFile(input) {
+    if (input.files.length) {
+        const name = input.files[0].name;
+        document.getElementById('evalFileName').textContent = name;
+        document.getElementById('evalFileInfo').style.display = 'flex';
+        document.getElementById('evalDropzone').style.display = 'none';
+    }
+}
+
+function clearEvalFile() {
+    document.getElementById('evalFileInput').value = '';
+    document.getElementById('evalFileInfo').style.display = 'none';
+    document.getElementById('evalDropzone').style.display = '';
+}
+
+// Drag & drop
+const dz = document.getElementById('evalDropzone');
+['dragenter', 'dragover'].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.add('drag-over'); }));
+['dragleave', 'drop'].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.remove('drag-over'); }));
+dz.addEventListener('drop', ev => {
+    const input = document.getElementById('evalFileInput');
+    input.files = ev.dataTransfer.files;
+    handleEvalFile(input);
+});
+
+// Form submit loading
+document.getElementById('evalForm').addEventListener('submit', function() {
+    const btn = document.getElementById('evalSubmitBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="material-symbols-rounded spin">sync</span> Submitting...';
+});
+</script>
+{% endblock %}

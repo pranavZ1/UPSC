@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}UPSC Study Engine{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Sidebar -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <div class="logo-mark">U</div>
+                <div class="logo-text">
+                    <span class="logo-title">UPSC Engine</span>
+                    <span class="logo-sub">Prelims & Mains</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard -->
+        <div class="nav-section">
+            <ul class="nav-links">
+                <li>
+                    <a href="{{ url_for('dashboard') }}" class="{% if request.endpoint == 'dashboard' %}active{% endif %}">
+                        <span class="material-symbols-rounded">dashboard</span>
+                        <span>Dashboard</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Study Section -->
+        <div class="nav-section study-section">
+            <span class="nav-label">STUDY</span>
+
+            <!-- Prelims / Mains Toggle -->
+            <div class="mode-toggle-wrap">
+                <button class="mode-btn active" id="btnPrelims" onclick="switchMode('prelims')">Prelims</button>
+                <button class="mode-btn" id="btnMains" onclick="switchMode('mains')">Mains</button>
+            </div>
+
+            <!-- Prelims nav -->
+            <div class="mode-section" data-mode="prelims">
+                <ul class="nav-links">
+                    <li>
+                        <a href="{{ url_for('raw_content_page') }}" class="{% if request.endpoint == 'raw_content_page' %}active{% endif %}">
+                            <span class="material-symbols-rounded">inventory_2</span>
+                            <span>Raw Content</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('content_page') }}" class="{% if request.endpoint == 'content_page' %}active{% endif %}">
+                            <span class="material-symbols-rounded">menu_book</span>
+                            <span>Study Notes</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('summary_page') }}" class="{% if request.endpoint == 'summary_page' %}active{% endif %}">
+                            <span class="material-symbols-rounded">summarize</span>
+                            <span>Summaries</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('questions_page') }}" class="{% if request.endpoint == 'questions_page' %}active{% endif %}">
+                            <span class="material-symbols-rounded">quiz</span>
+                            <span>MCQs</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Mains nav -->
+            <div class="mode-section" data-mode="mains" style="display:none;">
+                <ul class="nav-links">
+                    <li>
+                        <a href="{{ url_for('mains_raw_content_page') }}" class="{% if request.endpoint == 'mains_raw_content_page' %}active{% endif %}">
+                            <span class="material-symbols-rounded">inventory_2</span>
+                            <span>Raw Content</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('mains_content_page') }}" class="{% if request.endpoint == 'mains_content_page' %}active{% endif %}">
+                            <span class="material-symbols-rounded">menu_book</span>
+                            <span>Study Notes</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('mains_summary_page') }}" class="{% if request.endpoint == 'mains_summary_page' %}active{% endif %}">
+                            <span class="material-symbols-rounded">summarize</span>
+                            <span>Summaries</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('mains_questions_page') }}" class="{% if request.endpoint == 'mains_questions_page' %}active{% endif %}">
+                            <span class="material-symbols-rounded">edit_note</span>
+                            <span>Q&A</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Books -->
+        <div class="nav-section">
+            <span class="nav-label">TOOLS</span>
+            <ul class="nav-links">
+                <li>
+                    <a href="{{ url_for('books_page') }}" class="{% if request.endpoint in ('books_page', 'book_viewer', 'notebook_page') %}active{% endif %}">
+                        <span class="material-symbols-rounded">local_library</span>
+                        <span>Library</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('evaluate_page') }}" class="{% if request.endpoint in ('evaluate_page', 'evaluate_result', 'evaluate_processing') %}active{% endif %}">
+                        <span class="material-symbols-rounded">rate_review</span>
+                        <span>Answer Review</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('news_page') }}" class="{% if request.endpoint == 'news_page' %}active{% endif %}">
+                        <span class="material-symbols-rounded">newspaper</span>
+                        <span>Daily News</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('pyq_page') }}" class="{% if request.endpoint == 'pyq_page' %}active{% endif %}">
+                        <span class="material-symbols-rounded">history_edu</span>
+                        <span>PYQ Papers</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('askbot_page') }}" class="{% if request.endpoint == 'askbot_page' %}active{% endif %}">
+                        <span class="material-symbols-rounded">smart_toy</span>
+                        <span>Ask a Bot</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Mobile header -->
+    <header class="mobile-header">
+        <button class="menu-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')">
+            <span class="material-symbols-rounded">menu</span>
+        </button>
+        <span class="mobile-title">UPSC Study Engine</span>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="toast-container" id="toastContainer">
+            {% for category, message in messages %}
+            <div class="toast toast-{{ category }}">
+                <span class="material-symbols-rounded toast-icon">
+                    {% if category == 'success' %}check_circle{% elif category == 'error' %}error{% elif category == 'warning' %}warning{% else %}info{% endif %}
+                </span>
+                <span class="toast-msg">{{ message }}</span>
+                <button class="toast-close" onclick="this.parentElement.remove()">
+                    <span class="material-symbols-rounded">close</span>
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    {% block scripts %}{% endblock %}
+
+    <script>
+    // Auto-dismiss toasts after 5 seconds
+    document.querySelectorAll('.toast').forEach(t => {
+        setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 5000);
+    });
+    // Close sidebar on mobile when clicking outside
+    document.querySelector('.main-content').addEventListener('click', () => {
+        document.getElementById('sidebar').classList.remove('open');
+    });
+
+    // ── Prelims / Mains mode toggle ────────────────────────────
+    function switchMode(mode) {
+        // Toggle buttons
+        document.getElementById('btnPrelims').classList.toggle('active', mode === 'prelims');
+        document.getElementById('btnMains').classList.toggle('active', mode === 'mains');
+
+        // Toggle nav sections
+        document.querySelectorAll('.mode-section').forEach(sec => {
+            sec.style.display = sec.dataset.mode === mode ? '' : 'none';
+        });
+
+        // Remember choice
+        localStorage.setItem('upsc_mode', mode);
+    }
+
+    // Restore saved mode on load
+    (function() {
+        const saved = localStorage.getItem('upsc_mode');
+        // Auto-detect mode from current page URL
+        const path = window.location.pathname;
+        if (path.startsWith('/mains/')) {
+            switchMode('mains');
+        } else if (path.startsWith('/books')) {
+            // Books page: keep current mode (both visible)
+            if (saved) switchMode(saved);
+        } else if (saved) {
+            switchMode(saved);
+        }
+    })();
+    </script>
+</body>
+</html>

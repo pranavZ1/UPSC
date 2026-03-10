@@ -1,0 +1,1794 @@
+{% extends "base.html" %}
+{% block title %}NotebookLLM — {{ book.title }}{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="nb-header">
+    <a href="{{ url_for('books_page') }}" class="btn btn-ghost">
+        <span class="material-symbols-rounded">arrow_back</span> Library
+    </a>
+    <div class="nb-header-info">
+        <h1 class="nb-title">🧠 NotebookLLM</h1>
+        <p class="nb-subtitle">{{ book.title }}</p>
+    </div>
+    <a href="{{ url_for('book_viewer', book_id=book.id) }}" class="btn btn-sm btn-primary">
+        <span class="material-symbols-rounded" style="font-size:16px;">auto_stories</span> Read Book
+    </a>
+</div>
+
+<!-- Feature Tabs -->
+<div class="nb-tabs">
+    <button class="nb-tab active" onclick="switchNbTab('audio')" id="nbTabAudio">
+        <span class="material-symbols-rounded">headphones</span> Audio
+    </button>
+    <button class="nb-tab" onclick="switchNbTab('mindmap')" id="nbTabMindmap">
+        <span class="material-symbols-rounded">account_tree</span> Mind Maps
+    </button>
+    <button class="nb-tab" onclick="switchNbTab('infog')" id="nbTabInfog">
+        <span class="material-symbols-rounded">insert_chart</span> Infographics
+    </button>
+    <button class="nb-tab" onclick="switchNbTab('flashcards')" id="nbTabCards">
+        <span class="material-symbols-rounded">style</span> Flash Cards
+    </button>
+    <button class="nb-tab" onclick="switchNbTab('quiz')" id="nbTabQuiz">
+        <span class="material-symbols-rounded">quiz</span> Quiz
+    </button>
+    <button class="nb-tab" onclick="switchNbTab('cheatsheet')" id="nbTabCheat">
+        <span class="material-symbols-rounded">description</span> Cheat Sheet
+    </button>
+</div>
+
+<!-- ════════════════ PIPELINE PROGRESS BANNER ════════════════ -->
+<div class="nb-pipeline-banner" id="pipelineBanner" style="display:none;">
+    <div class="pipeline-header">
+        <span class="material-symbols-rounded pipeline-icon" id="pipelineIcon">rocket_launch</span>
+        <div class="pipeline-header-text">
+            <h3 class="pipeline-title" id="pipelineTitle">Generating Assets…</h3>
+            <p class="pipeline-subtitle" id="pipelineTask">Preparing…</p>
+        </div>
+        <button class="pipeline-dismiss-btn" id="pipelineDismiss" style="display:none;" onclick="document.getElementById('pipelineBanner').style.display='none'">
+            <span class="material-symbols-rounded">close</span>
+        </button>
+    </div>
+    <div class="pipeline-timeline" id="pipelineTimeline"></div>
+    <div class="pipeline-progress-bar">
+        <div class="pipeline-progress-fill" id="pipelineProgressFill" style="width:0%"></div>
+    </div>
+</div>
+
+<!-- Loading state if no structure yet -->
+{% if not structure %}
+<div class="nb-loading" id="nbLoading">
+    <div class="nb-loading-spinner"></div>
+    <p>Analyzing book structure... this may take a moment.</p>
+</div>
+{% endif %}
+
+<!-- ════════════════ AUDIO TAB ════════════════ -->
+<div class="nb-panel" id="panelAudio" {% if not structure %}style="display:none;"{% endif %}>
+    <div class="nb-two-col">
+        <!-- Chapter/Topic Sidebar -->
+        <div class="nb-sidebar">
+            <h3 class="nb-sidebar-title">Chapters</h3>
+            <div class="nb-chapter-list" id="audioChapterList">
+                {% if structure %}
+                {% for ch in structure.chapters %}
+                <div class="nb-chapter-item">
+                    <button class="nb-chapter-btn" onclick="toggleChapter(this, 'audio', {{ loop.index0 }})">
+                        <span class="material-symbols-rounded nb-ch-arrow">chevron_right</span>
+                        <span>{{ ch.chapter_title }}</span>
+                    </button>
+                    <div class="nb-topic-list" style="display:none;">
+                        {% set ch_idx = loop.index0 %}
+                        <button class="nb-topic-btn nb-read-chapter-btn" onclick="loadChapterAudio({{ ch_idx }}, this)">
+                            <span class="material-symbols-rounded" style="font-size:16px;">menu_book</span>
+                            Read Entire Chapter
+                        </button>
+                        {% for topic in ch.topics %}
+                        <button class="nb-topic-btn" onclick="loadAudio({{ ch_idx }}, {{ loop.index0 }}, this)">
+                            <span class="material-symbols-rounded" style="font-size:16px;">play_circle</span>
+                            {{ topic.topic_title }}
+                        </button>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+        <!-- Audio Player Area -->
+        <div class="nb-content">
+            <div class="nb-placeholder" id="audioPlaceholder">
+                <span class="material-symbols-rounded" style="font-size:64px;color:#7c4dff;">headphones</span>
+                <h3>Select a topic to listen</h3>
+                <p>Choose a chapter and topic from the left to generate an AI audio lecture</p>
+            </div>
+            <div class="nb-audio-player" id="audioPlayer" style="display:none;">
+                <div class="nb-audio-header">
+                    <h3 id="audioTopicTitle"></h3>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span class="nb-tts-badge" id="ttsBadge" title="Audio engine"></span>
+                        <span class="nb-audio-duration" id="audioDuration"></span>
+                    </div>
+                </div>
+                <div class="nb-audio-controls">
+                    <button class="nb-play-btn" id="audioPlayBtn" onclick="togglePlayPause()">
+                        <span class="material-symbols-rounded" id="playIcon">play_arrow</span>
+                    </button>
+                    <div class="nb-audio-progress">
+                        <div class="nb-progress-bar">
+                            <div class="nb-progress-fill" id="audioProgress"></div>
+                        </div>
+                        <div class="nb-audio-time">
+                            <span id="audioCurrentTime">0:00</span>
+                            <span id="audioTotalTime">0:00</span>
+                        </div>
+                    </div>
+                    <div class="nb-speed-control">
+                        <button class="nb-speed-btn" onclick="cycleSpeed()">
+                            <span id="speedLabel">1x</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="nb-audio-script" id="audioScript"></div>
+                <div class="nb-audio-loading" id="audioLoading" style="display:none;">
+                    <div class="nb-loading-spinner"></div>
+                    <span>Generating audio lecture...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ════════════════ MIND MAP TAB ════════════════ -->
+<div class="nb-panel" id="panelMindmap" style="display:none;">
+    <div class="nb-two-col">
+        <div class="nb-sidebar">
+            <h3 class="nb-sidebar-title">Chapters</h3>
+            <div class="nb-chapter-list" id="mindmapChapterList">
+                {% if structure %}
+                {% for ch in structure.chapters %}
+                <button class="nb-chapter-select-btn" onclick="loadMindmap({{ loop.index0 }}, this)">
+                    <span class="material-symbols-rounded" style="font-size:18px;">account_tree</span>
+                    {{ ch.chapter_title }}
+                </button>
+                {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+        <div class="nb-content">
+            <div class="nb-placeholder" id="mindmapPlaceholder">
+                <span class="material-symbols-rounded" style="font-size:64px;color:#00bfa5;">account_tree</span>
+                <h3>Select a chapter</h3>
+                <p>Click a chapter to generate its mind map</p>
+            </div>
+            <div id="mindmapImageContainer" style="display:none;"></div>
+            <div class="nb-mindmap-loading" id="mindmapLoading" style="display:none;">
+                <div class="nb-loading-spinner"></div>
+                <span>Generating AI mind map... (may take 30-60 seconds)</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ════════════════ INFOGRAPHIC TAB ════════════════ -->
+<div class="nb-panel" id="panelInfog" style="display:none;">
+    <div class="nb-two-col">
+        <div class="nb-sidebar">
+            <h3 class="nb-sidebar-title">Chapters</h3>
+            <div class="nb-chapter-list" id="infogChapterList">
+                {% if structure %}
+                {% for ch in structure.chapters %}
+                <button class="nb-chapter-select-btn" onclick="loadInfog({{ loop.index0 }}, this)">
+                    <span class="material-symbols-rounded" style="font-size:18px;">insert_chart</span>
+                    {{ ch.chapter_title }}
+                </button>
+                {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+        <div class="nb-content">
+            <div class="nb-placeholder" id="infogPlaceholder">
+                <span class="material-symbols-rounded" style="font-size:64px;color:#ff6d00;">insert_chart</span>
+                <h3>Select a chapter</h3>
+                <p>Click a chapter to generate visual infographics</p>
+            </div>
+            <div id="infogContainer" style="display:none;"></div>
+            <div class="nb-infog-loading" id="infogLoading" style="display:none;">
+                <div class="nb-loading-spinner"></div>
+                <span>Generating AI infographic... (may take 30-60 seconds)</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ════════════════ FLASH CARDS TAB ════════════════ -->
+<div class="nb-panel" id="panelFlashcards" style="display:none;">
+    <div class="nb-two-col">
+        <div class="nb-sidebar">
+            <h3 class="nb-sidebar-title">Chapters</h3>
+            <div class="nb-chapter-list" id="cardsChapterList">
+                <!-- Super Last Min Prep -->
+                <button class="super-lastmin-btn" id="superLastMinBtn" onclick="loadSuperCards(this)">
+                    <span class="material-symbols-rounded" style="font-size:20px;">local_fire_department</span>
+                    <div class="super-lastmin-text">
+                        <strong>Super Last Min Prep</strong>
+                        <span>15-20 must-know cards from entire book</span>
+                    </div>
+                </button>
+                <div class="nb-sidebar-divider"></div>
+                {% if structure %}
+                {% for ch in structure.chapters %}
+                {% set ch_idx = loop.index0 %}
+                <div class="nb-chapter-item">
+                    <button class="nb-chapter-btn" onclick="toggleChapter(this, 'cards', {{ ch_idx }})">
+                        <span class="material-symbols-rounded nb-ch-arrow">chevron_right</span>
+                        <span>{{ ch.chapter_title }}</span>
+                    </button>
+                    <div class="nb-topic-list" style="display:none;">
+                        {% for topic in ch.topics %}
+                        <button class="nb-topic-btn" onclick="loadFlashcards({{ ch_idx }}, {{ loop.index0 }}, this)">
+                            <span class="material-symbols-rounded" style="font-size:16px;">style</span>
+                            {{ topic.topic_title }}
+                        </button>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+        <div class="nb-content">
+            <div class="nb-placeholder" id="cardsPlaceholder">
+                <span class="material-symbols-rounded" style="font-size:64px;color:#e91e63;">style</span>
+                <h3>Select a topic</h3>
+                <p>Choose a chapter and topic to generate revision cards</p>
+            </div>
+            <div class="fc-area" id="cardsArea" style="display:none;">
+                <!-- Card display -->
+                <div class="fc-stage">
+                    <button class="fc-arrow fc-arrow-left" onclick="prevCard()">
+                        <span class="material-symbols-rounded">chevron_left</span>
+                    </button>
+                    <div class="fc-card-container" onclick="flipCard()">
+                        <div class="fc-card" id="flashcardEl">
+                            <div class="fc-card-front" id="cardFront">
+                                <p class="fc-point" id="cardPointText"></p>
+                                <span class="fc-tap-hint">Tap to see detail</span>
+                            </div>
+                            <div class="fc-card-back" id="cardBack">
+                                <p class="fc-detail" id="cardDetailText"></p>
+                                <span class="fc-tap-hint fc-tap-hint-back">Tap to go back</span>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="fc-arrow fc-arrow-right" onclick="nextCard()">
+                        <span class="material-symbols-rounded">chevron_right</span>
+                    </button>
+                </div>
+                <!-- Bottom bar -->
+                <div class="fc-bottom">
+                    <button class="fc-restart-btn" onclick="restartCards()">
+                        <span class="material-symbols-rounded" style="font-size:18px;">refresh</span> Restart
+                    </button>
+                    <div class="fc-progress-wrap">
+                        <div class="fc-progress-bar" id="fcProgressBar"></div>
+                    </div>
+                    <span class="fc-counter" id="cardCounter">1 / 10 cards</span>
+                </div>
+            </div>
+            <div class="nb-cards-loading" id="cardsLoading" style="display:none;">
+                <div class="nb-loading-spinner"></div>
+                <span>Generating revision cards...</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ════════════════ QUIZ TAB ════════════════ -->
+<div class="nb-panel" id="panelQuiz" style="display:none;">
+    <div class="nb-two-col">
+        <div class="nb-sidebar">
+            <h3 class="nb-sidebar-title">Chapters</h3>
+            <div class="nb-chapter-list" id="quizChapterList">
+                {% if structure %}
+                {% for ch in structure.chapters %}
+                <button class="nb-chapter-select-btn" data-title="{{ ch.chapter_title }}" onclick="selectQuizChapter({{ loop.index0 }}, this)">
+                    <span class="material-symbols-rounded" style="font-size:18px;">quiz</span>
+                    {{ ch.chapter_title }}
+                </button>
+                {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+        <div class="nb-content">
+            <!-- Placeholder -->
+            <div class="nb-placeholder" id="quizPlaceholder">
+                <span class="material-symbols-rounded" style="font-size:64px;color:#7c4dff;">quiz</span>
+                <h3>Select a chapter</h3>
+                <p>Choose a chapter to start a quiz</p>
+            </div>
+            <!-- Difficulty selector -->
+            <div class="quiz-difficulty" id="quizDifficulty" style="display:none;">
+                <h3 class="quiz-diff-title" id="quizChTitle"></h3>
+                <p class="quiz-diff-sub">Select one or more difficulty levels</p>
+                <div class="quiz-diff-btns">
+                    <button class="quiz-diff-btn quiz-diff-easy" data-diff="easy" onclick="toggleDifficulty(this)">
+                        <span class="material-symbols-rounded diff-icon">sentiment_satisfied</span>
+                        <span class="diff-label">Easy</span>
+                        <span class="diff-desc">Basic recall &amp; definitions</span>
+                    </button>
+                    <button class="quiz-diff-btn quiz-diff-medium" data-diff="medium" onclick="toggleDifficulty(this)">
+                        <span class="material-symbols-rounded diff-icon">psychology</span>
+                        <span class="diff-label">Medium</span>
+                        <span class="diff-desc">Application &amp; understanding</span>
+                    </button>
+                    <button class="quiz-diff-btn quiz-diff-hard" data-diff="hard" onclick="toggleDifficulty(this)">
+                        <span class="material-symbols-rounded diff-icon">local_fire_department</span>
+                        <span class="diff-label">Hard</span>
+                        <span class="diff-desc">UPSC Prelims standard</span>
+                    </button>
+                </div>
+                <button class="quiz-start-btn" id="quizStartBtn" onclick="startMultiQuiz()" disabled>
+                    <span class="material-symbols-rounded" style="font-size:18px;">play_arrow</span> Start Quiz
+                </button>
+            </div>
+            <!-- Loading -->
+            <div class="nb-quiz-loading" id="quizLoading" style="display:none;">
+                <div class="nb-loading-spinner"></div>
+                <span>Generating quiz questions...</span>
+            </div>
+            <!-- Quiz Area -->
+            <div class="quiz-area" id="quizArea" style="display:none;">
+                <!-- Progress bar -->
+                <div class="quiz-header">
+                    <div class="quiz-progress-info">
+                        <span id="quizProgressText">Question 1 / 10</span>
+                        <span class="quiz-timer" id="quizTimer"></span>
+                    </div>
+                    <div class="quiz-progress-track">
+                        <div class="quiz-progress-fill" id="quizProgressBar"></div>
+                    </div>
+                    <div class="quiz-dots" id="quizDots"></div>
+                </div>
+                <!-- Question card -->
+                <div class="quiz-question-card" id="quizCard">
+                    <p class="quiz-q-text" id="quizQText"></p>
+                    <div class="quiz-options" id="quizOptions"></div>
+                    <div class="quiz-actions">
+                        <button class="quiz-skip-btn" id="quizSkipBtn" onclick="skipQuestion()">
+                            <span class="material-symbols-rounded" style="font-size:18px;">skip_next</span> Skip
+                        </button>
+                        <button class="quiz-submit-btn" id="quizSubmitBtn" onclick="submitAnswer()" disabled>
+                            <span class="material-symbols-rounded" style="font-size:18px;">check_circle</span> Submit
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <!-- Results -->
+            <div class="quiz-results" id="quizResults" style="display:none;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ════════════════ CHEAT SHEET TAB ════════════════ -->
+<div class="nb-panel" id="panelCheatsheet" style="display:none;">
+    <div class="cs-container">
+        <!-- Cheat Sheet Header -->
+        <div class="cs-header">
+            <div class="cs-header-left">
+                <span class="material-symbols-rounded cs-header-icon">description</span>
+                <div>
+                    <h2 class="cs-title" id="csTitle">Cheat Sheet</h2>
+                    <p class="cs-subtitle">Last-minute revision — all chapters, one sheet</p>
+                </div>
+            </div>
+            <button class="cs-generate-btn" id="csGenerateBtn" onclick="loadCheatSheet()">
+                <span class="material-symbols-rounded" style="font-size:18px;">auto_awesome</span> Generate Cheat Sheet
+            </button>
+        </div>
+
+        <!-- Chapter quick-jump nav -->
+        <div class="cs-nav" id="csNav" style="display:none;">
+            <span class="cs-nav-label">Jump to:</span>
+            <div class="cs-nav-chips" id="csNavChips"></div>
+        </div>
+
+        <!-- Loading -->
+        <div class="cs-loading" id="csLoading" style="display:none;">
+            <div class="nb-loading-spinner"></div>
+            <p>Generating cheat sheet for the entire book... this may take a few minutes.</p>
+        </div>
+
+        <!-- Cheat Sheet Content -->
+        <div class="cs-content" id="csContent" style="display:none;"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const BOOK_ID = "{{ book.id }}";
+let currentCards = [];
+let currentCardIdx = 0;
+
+// ── Pipeline progress polling ────────────────────
+const PHASE_LABELS = {
+    upload: 'Upload', indexing: 'Indexing', structure: 'Structure',
+    mindmaps: 'Mind Maps', infographics: 'Infographics', audio: 'Audio',
+    flashcards: 'Flash Cards', quiz: 'Quiz Dump', cheatsheet: 'Cheat Sheet',
+};
+const PHASE_ICONS = {
+    upload: 'cloud_upload', indexing: 'search', structure: 'account_tree',
+    mindmaps: 'hub', infographics: 'insert_chart', audio: 'headphones',
+    flashcards: 'style', quiz: 'quiz', cheatsheet: 'description',
+};
+
+let pipelineInterval = null;
+
+function pollPipeline() {
+    fetch(`/books/${BOOK_ID}/pipeline-status`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) return;
+        const banner = document.getElementById('pipelineBanner');
+        const status = data.status;
+
+        if (status === 'pending' || status === 'running') {
+            banner.style.display = '';
+            document.getElementById('pipelineTitle').textContent =
+                status === 'pending' ? 'Pipeline Queued…' : 'Generating Assets…';
+            document.getElementById('pipelineTask').textContent = data.current_task || 'Starting…';
+            document.getElementById('pipelineIcon').textContent =
+                status === 'pending' ? 'hourglass_top' : 'rocket_launch';
+            document.getElementById('pipelineDismiss').style.display = 'none';
+
+            // Build timeline
+            const phases = data.all_phases || [];
+            const done = data.phases_done || [];
+            const current = data.phase || '';
+            let html = '';
+            phases.forEach(p => {
+                const isDone = done.includes(p);
+                const isCurrent = (p === current);
+                let cls = 'pipeline-step';
+                if (isDone) cls += ' pipeline-step-done';
+                else if (isCurrent) cls += ' pipeline-step-active';
+                const icon = isDone ? 'check_circle' : (isCurrent ? 'pending' : 'radio_button_unchecked');
+                html += `<div class="${cls}">
+                    <span class="material-symbols-rounded pipeline-step-icon">${icon}</span>
+                    <span class="pipeline-step-label">${PHASE_LABELS[p] || p}</span>
+                </div>`;
+            });
+            document.getElementById('pipelineTimeline').innerHTML = html;
+
+            // Progress bar (across all phases)
+            const totalPhases = phases.length;
+            const doneCount = done.length;
+            const phaseProgress = data.phase_progress || 0;
+            const overallPct = totalPhases > 0
+                ? Math.round(((doneCount + phaseProgress / 100) / totalPhases) * 100) : 0;
+            document.getElementById('pipelineProgressFill').style.width = overallPct + '%';
+
+        } else if (status === 'completed') {
+            banner.style.display = '';
+            document.getElementById('pipelineTitle').textContent = 'All Assets Generated!';
+            document.getElementById('pipelineTask').textContent = 'Everything is ready. Enjoy your study session!';
+            document.getElementById('pipelineIcon').textContent = 'check_circle';
+            document.getElementById('pipelineDismiss').style.display = '';
+            document.getElementById('pipelineProgressFill').style.width = '100%';
+            // Build completed timeline
+            const phases = data.all_phases || [];
+            document.getElementById('pipelineTimeline').innerHTML = phases.map(p =>
+                `<div class="pipeline-step pipeline-step-done">
+                    <span class="material-symbols-rounded pipeline-step-icon">check_circle</span>
+                    <span class="pipeline-step-label">${PHASE_LABELS[p] || p}</span>
+                </div>`
+            ).join('');
+            clearInterval(pipelineInterval);
+        } else if (status === 'error') {
+            banner.style.display = '';
+            document.getElementById('pipelineTitle').textContent = 'Pipeline Error';
+            document.getElementById('pipelineTask').textContent = data.error || 'Unknown error';
+            document.getElementById('pipelineIcon').textContent = 'error';
+            document.getElementById('pipelineDismiss').style.display = '';
+            clearInterval(pipelineInterval);
+        } else {
+            // No pipeline or already dismissed
+            banner.style.display = 'none';
+            clearInterval(pipelineInterval);
+        }
+      })
+      .catch(() => {});
+}
+
+// Start polling on load
+pipelineInterval = setInterval(pollPipeline, 3000);
+pollPipeline();
+
+
+// ── Audio state ──────────────────────────────────
+let audioEl = null;            // HTML5 Audio element (ElevenLabs MP3)
+let audioScriptText = '';      // raw script text
+let audioSentences = [];       // array of sentence strings
+let audioPlaying = false;
+let audioPlaybackRate = 1.0;
+let progressRAF = null;        // requestAnimationFrame id
+let usingBrowserTTS = false;   // fallback mode flag
+let speechUtterance = null;    // browser TTS fallback
+let ttsCharOffset = 0;         // character offset for resume/seek
+let ttsLastCharIndex = 0;      // last charIndex from onboundary
+let ttsBestVoice = null;       // cached best voice
+
+// ── Pre-load voices (macOS loads async) ──────────
+function pickBestVoice() {
+    const voices = window.speechSynthesis.getVoices();
+    if (!voices.length) return null;
+
+    // Log ALL English voices so we can see what's available
+    const enVoices = voices.filter(v => v.lang.startsWith('en'));
+    console.log('[TTS] All English voices available:');
+    enVoices.forEach(v => console.log(`  "${v.name}" | ${v.lang} | local=${v.localService}`));
+
+    // Female voice names to look for (case-insensitive partial match)
+    // Order = most natural/human sounding first
+    const femaleNames = [
+        'samantha', 'zoe', 'victoria', 'ava', 'allison', 'susan',
+        'karen', 'kate', 'moira', 'tessa', 'fiona', 'veena',
+        'shelley', 'sandy', 'flo', 'tara', 'serena', 'stephanie',
+    ];
+
+    // Pass 1: Look for "Enhanced" or "Premium" female voice (neural, most human)
+    for (const name of femaleNames) {
+        const match = enVoices.find(v =>
+            v.name.toLowerCase().includes(name) &&
+            (v.name.toLowerCase().includes('enhanced') || v.name.toLowerCase().includes('premium'))
+        );
+        if (match) {
+            console.log('[TTS] ✓ Selected ENHANCED female voice:', match.name, match.lang);
+            return match;
+        }
+    }
+
+    // Pass 2: Any local (system) female voice
+    for (const name of femaleNames) {
+        const match = enVoices.find(v =>
+            v.name.toLowerCase().includes(name) && v.localService
+        );
+        if (match) {
+            console.log('[TTS] ✓ Selected local female voice:', match.name, match.lang);
+            return match;
+        }
+    }
+
+    // Pass 3: Any female voice at all (including cloud)
+    for (const name of femaleNames) {
+        const match = enVoices.find(v => v.name.toLowerCase().includes(name));
+        if (match) {
+            console.log('[TTS] ✓ Selected female voice:', match.name, match.lang);
+            return match;
+        }
+    }
+
+    // Pass 4: Google Female voice
+    const google = enVoices.find(v => /google.*female/i.test(v.name));
+    if (google) {
+        console.log('[TTS] ✓ Selected Google female voice:', google.name);
+        return google;
+    }
+
+    console.log('[TTS] ⚠ No female voice found, using first English voice');
+    return enVoices[0] || voices[0];
+}
+
+// Voices load asynchronously — pick when ready, and re-pick if list updates
+function initVoices() {
+    ttsBestVoice = pickBestVoice();
+    // Update badge if visible
+    const badge = document.getElementById('ttsBadge');
+    if (badge && ttsBestVoice) {
+        badge.textContent = ttsBestVoice.name.replace(/ \(.*\)/, '');
+        badge.className = 'nb-tts-badge nb-tts-browser';
+    }
+}
+window.speechSynthesis.onvoiceschanged = initVoices;
+// Also try immediately (Chrome has them ready, Safari needs the event)
+setTimeout(initVoices, 100);
+setTimeout(initVoices, 500);
+
+// ── Tab switching ────────────────────────────────
+function switchNbTab(tab) {
+    ['audio', 'mindmap', 'infog', 'flashcards', 'quiz', 'cheatsheet'].forEach(t => {
+        const panel = document.getElementById('panel' + t.charAt(0).toUpperCase() + t.slice(1));
+        if (panel) panel.style.display = t === tab ? '' : 'none';
+
+        const tabNames = {audio: 'Audio', mindmap: 'Mindmap', infog: 'Infog', flashcards: 'Cards', quiz: 'Quiz', cheatsheet: 'Cheat'};
+        const btn = document.getElementById('nbTab' + tabNames[t]);
+        if (btn) btn.classList.toggle('active', t === tab);
+    });
+}
+
+// ── Chapter expand/collapse ──────────────────────
+function toggleChapter(btn, prefix, chIdx) {
+    const topicList = btn.nextElementSibling;
+    const arrow = btn.querySelector('.nb-ch-arrow');
+    const isOpen = topicList.style.display !== 'none';
+    topicList.style.display = isOpen ? 'none' : '';
+    arrow.textContent = isOpen ? 'chevron_right' : 'expand_more';
+}
+
+// ═══════════ AUDIO ═══════════════════════════════
+
+// ── Helpers ──────────────────────────────────────
+function updateTTSBadge() {
+    const badge = document.getElementById('ttsBadge');
+    if (!badge) return;
+    const voiceName = ttsBestVoice ? ttsBestVoice.name.replace(/ \(.*\)/, '') : 'Default';
+    badge.textContent = voiceName;
+    badge.className = 'nb-tts-badge nb-tts-browser';
+}
+
+function splitIntoSentences(text) {
+    // Split on sentence boundaries (. ! ?) followed by space or end
+    return text
+        .split(/(?<=[.!?])\s+/)
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+}
+
+function formatTime(sec) {
+    if (isNaN(sec) || !isFinite(sec)) return '0:00';
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function renderScriptWithSentences(scriptText) {
+    const paragraphs = scriptText.split('\n').filter(p => p.trim());
+    const container = document.getElementById('audioScript');
+    let sentenceIdx = 0;
+    audioSentences = [];
+
+    let html = '';
+    paragraphs.forEach((para, pIdx) => {
+        const sentences = splitIntoSentences(para);
+        html += `<p class="nb-script-para">`;
+        sentences.forEach(sent => {
+            html += `<span class="nb-sentence" data-sidx="${sentenceIdx}">${sent} </span>`;
+            audioSentences.push(sent);
+            sentenceIdx++;
+        });
+        html += `</p>`;
+    });
+
+    container.innerHTML = html;
+}
+
+function updateHighlight(currentTime, duration) {
+    if (!audioSentences.length || !duration) return;
+    const pct = currentTime / duration;
+
+    // Estimate which sentence we're on based on character position
+    const totalChars = audioSentences.reduce((sum, s) => sum + s.length, 0);
+    const targetChar = Math.floor(pct * totalChars);
+
+    let cumChars = 0;
+    let activeIdx = 0;
+    for (let i = 0; i < audioSentences.length; i++) {
+        cumChars += audioSentences[i].length;
+        if (cumChars >= targetChar) {
+            activeIdx = i;
+            break;
+        }
+    }
+
+    // Apply highlight
+    document.querySelectorAll('.nb-sentence').forEach(el => {
+        const idx = parseInt(el.dataset.sidx);
+        el.classList.toggle('nb-sentence-active', idx === activeIdx);
+        el.classList.toggle('nb-sentence-past', idx < activeIdx);
+    });
+
+    // Auto-scroll the active sentence into view
+    const activeEl = document.querySelector('.nb-sentence-active');
+    if (activeEl) {
+        const container = document.getElementById('audioScript');
+        const elTop = activeEl.offsetTop - container.offsetTop;
+        const cScroll = container.scrollTop;
+        const cHeight = container.clientHeight;
+        if (elTop < cScroll || elTop > cScroll + cHeight - 60) {
+            container.scrollTo({ top: elTop - 80, behavior: 'smooth' });
+        }
+    }
+}
+
+// ── Progress loop ────────────────────────────────
+function trackProgress() {
+    if (!audioEl) return;
+    const dur = audioEl.duration || 0;
+    const cur = audioEl.currentTime || 0;
+
+    if (dur > 0) {
+        document.getElementById('audioProgress').style.width = ((cur / dur) * 100) + '%';
+        document.getElementById('audioCurrentTime').textContent = formatTime(cur);
+        document.getElementById('audioTotalTime').textContent = formatTime(dur);
+        updateHighlight(cur, dur);
+    }
+
+    if (audioPlaying) {
+        progressRAF = requestAnimationFrame(trackProgress);
+    }
+}
+
+// ── Core functions ───────────────────────────────
+function initAudioElement(url) {
+    // Clean up previous audio
+    if (audioEl) {
+        audioEl.pause();
+        audioEl.src = '';
+        cancelAnimationFrame(progressRAF);
+    }
+
+    audioEl = new Audio(url);
+    audioEl.playbackRate = audioPlaybackRate;
+
+    audioEl.addEventListener('loadedmetadata', () => {
+        document.getElementById('audioTotalTime').textContent = formatTime(audioEl.duration);
+    });
+
+    audioEl.addEventListener('ended', () => {
+        audioPlaying = false;
+        document.getElementById('playIcon').textContent = 'play_arrow';
+        document.getElementById('audioProgress').style.width = '100%';
+        cancelAnimationFrame(progressRAF);
+        // Clear highlight
+        document.querySelectorAll('.nb-sentence').forEach(el => {
+            el.classList.remove('nb-sentence-active');
+            el.classList.add('nb-sentence-past');
+        });
+    });
+
+    audioEl.addEventListener('error', (e) => {
+        console.error('Audio error:', e);
+        document.getElementById('audioScript').innerHTML +=
+            `<p style="color:#e53935;margin-top:10px;">Audio playback error. Using script-only mode.</p>`;
+    });
+}
+
+function loadAudio(chapterIdx, topicIdx, btn) {
+    // Clear active states
+    document.querySelectorAll('#panelAudio .nb-topic-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+
+    document.getElementById('audioPlaceholder').style.display = 'none';
+    document.getElementById('audioPlayer').style.display = '';
+    document.getElementById('audioLoading').style.display = 'flex';
+    document.getElementById('audioScript').innerHTML = '';
+    stopAudio();
+
+    fetch(`/notebook/${BOOK_ID}/audio/${chapterIdx}/${topicIdx}`)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('audioLoading').style.display = 'none';
+            if (data.error) {
+                document.getElementById('audioScript').innerHTML = `<p style="color:#e53935;">${data.error}</p>`;
+                return;
+            }
+            document.getElementById('audioTopicTitle').textContent = data.title;
+            document.getElementById('audioDuration').textContent = `~${data.duration_estimate}`;
+            audioScriptText = data.script;
+
+            // Render with sentence spans for highlighting
+            renderScriptWithSentences(data.script);
+
+            // Init HTML5 audio if MP3 is available
+            if (data.audio_url) {
+                usingBrowserTTS = false;
+                initAudioElement(data.audio_url);
+            } else {
+                // Fallback to browser TTS
+                usingBrowserTTS = true;
+                audioEl = null;
+            }
+            updateTTSBadge();
+            document.getElementById('audioPlayBtn').style.display = '';
+
+            // Reset progress UI
+            document.getElementById('audioProgress').style.width = '0%';
+            document.getElementById('audioCurrentTime').textContent = '0:00';
+        })
+        .catch(err => {
+            document.getElementById('audioLoading').style.display = 'none';
+            document.getElementById('audioScript').innerHTML = `<p style="color:#e53935;">Error: ${err}</p>`;
+        });
+}
+
+function togglePlayPause() {
+    if (audioEl && !usingBrowserTTS) {
+        // ── ElevenLabs MP3 mode ──
+        if (audioPlaying) {
+            audioEl.pause();
+            audioPlaying = false;
+            document.getElementById('playIcon').textContent = 'play_arrow';
+            cancelAnimationFrame(progressRAF);
+        } else {
+            audioEl.play();
+            audioPlaying = true;
+            document.getElementById('playIcon').textContent = 'pause';
+            trackProgress();
+        }
+    } else {
+        // ── Browser TTS mode ──
+        if (audioPlaying) {
+            // Pause: remember where we are so we can resume
+            ttsCharOffset = ttsCharOffset + ttsLastCharIndex;
+            window.speechSynthesis.cancel();
+            audioPlaying = false;
+            document.getElementById('playIcon').textContent = 'play_arrow';
+        } else {
+            // Resume from where we paused (or start from 0)
+            startBrowserTTS(ttsCharOffset);
+        }
+    }
+}
+
+function loadChapterAudio(chapterIdx, btn) {
+    document.querySelectorAll('#panelAudio .nb-topic-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+
+    document.getElementById('audioPlaceholder').style.display = 'none';
+    document.getElementById('audioPlayer').style.display = '';
+    document.getElementById('audioLoading').style.display = 'flex';
+    document.getElementById('audioScript').innerHTML = '';
+    stopAudio();
+
+    fetch(`/notebook/${BOOK_ID}/audio-chapter/${chapterIdx}`)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('audioLoading').style.display = 'none';
+            if (data.error) {
+                document.getElementById('audioScript').innerHTML = `<p style="color:#e53935;">${data.error}</p>`;
+                return;
+            }
+            document.getElementById('audioTopicTitle').textContent = data.title;
+            document.getElementById('audioDuration').textContent = `~${data.duration_estimate}`;
+            audioScriptText = data.script;
+
+            renderScriptWithSentences(data.script);
+
+            if (data.audio_url) {
+                usingBrowserTTS = false;
+                initAudioElement(data.audio_url);
+            } else {
+                usingBrowserTTS = true;
+                audioEl = null;
+            }
+            updateTTSBadge();
+            document.getElementById('audioPlayBtn').style.display = '';
+
+            document.getElementById('audioProgress').style.width = '0%';
+            document.getElementById('audioCurrentTime').textContent = '0:00';
+        })
+        .catch(err => {
+            document.getElementById('audioLoading').style.display = 'none';
+            document.getElementById('audioScript').innerHTML = `<p style="color:#e53935;">Error: ${err}</p>`;
+        });
+}
+
+function stopAudio() {
+    if (audioEl) {
+        audioEl.pause();
+        audioEl.currentTime = 0;
+    }
+    window.speechSynthesis.cancel();
+    audioPlaying = false;
+    ttsCharOffset = 0;
+    ttsLastCharIndex = 0;
+    cancelAnimationFrame(progressRAF);
+    document.getElementById('playIcon').textContent = 'play_arrow';
+    document.getElementById('audioProgress').style.width = '0%';
+    // Reset highlights
+    document.querySelectorAll('.nb-sentence').forEach(el => {
+        el.classList.remove('nb-sentence-active', 'nb-sentence-past');
+    });
+}
+
+function cycleSpeed() {
+    const speeds = [0.75, 1.0, 1.25, 1.5, 2.0];
+    const labels = ['0.75x', '1x', '1.25x', '1.5x', '2x'];
+    let idx = speeds.indexOf(audioPlaybackRate);
+    idx = (idx + 1) % speeds.length;
+    audioPlaybackRate = speeds[idx];
+    document.getElementById('speedLabel').textContent = labels[idx];
+    // For MP3 — just change playbackRate (no restart!)
+    if (audioEl && !usingBrowserTTS) {
+        audioEl.playbackRate = audioPlaybackRate;
+    }
+    // For browser TTS — resume from current position with new rate
+    if (usingBrowserTTS && audioPlaying) {
+        const resumeFrom = ttsCharOffset + ttsLastCharIndex;
+        window.speechSynthesis.cancel();
+        startBrowserTTS(resumeFrom);
+    }
+}
+
+// ── Browser TTS with resume/seek support ─────────
+function startBrowserTTS(fromCharIndex) {
+    if (!audioScriptText) return;
+    window.speechSynthesis.cancel();
+
+    // Use the offset to speak from a specific character forward
+    ttsCharOffset = fromCharIndex || 0;
+    ttsLastCharIndex = 0;
+    const textToSpeak = audioScriptText.substring(ttsCharOffset);
+    if (!textToSpeak.trim()) return;
+
+    speechUtterance = new SpeechSynthesisUtterance(textToSpeak);
+    speechUtterance.rate = audioPlaybackRate;
+    speechUtterance.pitch = 1.0;
+    speechUtterance.volume = 1.0;
+    // Match lang to the selected voice so there's no mismatch causing gaps
+    speechUtterance.lang = ttsBestVoice ? ttsBestVoice.lang : 'en-US';
+
+    // Use best available voice (Enhanced/Premium preferred)
+    if (ttsBestVoice) speechUtterance.voice = ttsBestVoice;
+
+    speechUtterance.onstart = () => {
+        audioPlaying = true;
+        document.getElementById('playIcon').textContent = 'pause';
+    };
+    speechUtterance.onend = () => {
+        audioPlaying = false;
+        document.getElementById('playIcon').textContent = 'play_arrow';
+        document.getElementById('audioProgress').style.width = '100%';
+        document.querySelectorAll('.nb-sentence').forEach(el => {
+            el.classList.remove('nb-sentence-active');
+            el.classList.add('nb-sentence-past');
+        });
+    };
+    speechUtterance.onboundary = (e) => {
+        ttsLastCharIndex = e.charIndex;
+        const globalCharIdx = ttsCharOffset + e.charIndex;
+        if (audioScriptText.length > 0) {
+            const pct = (globalCharIdx / audioScriptText.length) * 100;
+            document.getElementById('audioProgress').style.width = pct + '%';
+
+            // Estimate time display
+            const totalWords = audioScriptText.split(/\s+/).length;
+            const wordsPerSec = (150 * audioPlaybackRate) / 60;
+            const totalSec = totalWords / wordsPerSec;
+            const curSec = (pct / 100) * totalSec;
+            document.getElementById('audioCurrentTime').textContent = formatTime(curSec);
+            document.getElementById('audioTotalTime').textContent = formatTime(totalSec);
+
+            // Update sentence highlight
+            const totalChars = audioSentences.reduce((sum, s) => sum + s.length, 0);
+            const targetChar = Math.floor((pct / 100) * totalChars);
+            let cum = 0, activeIdx = 0;
+            for (let i = 0; i < audioSentences.length; i++) {
+                cum += audioSentences[i].length;
+                if (cum >= targetChar) { activeIdx = i; break; }
+            }
+            document.querySelectorAll('.nb-sentence').forEach(el => {
+                const idx = parseInt(el.dataset.sidx);
+                el.classList.toggle('nb-sentence-active', idx === activeIdx);
+                el.classList.toggle('nb-sentence-past', idx < activeIdx);
+            });
+            const activeEl = document.querySelector('.nb-sentence-active');
+            if (activeEl) {
+                const container = document.getElementById('audioScript');
+                const elTop = activeEl.offsetTop - container.offsetTop;
+                if (elTop < container.scrollTop || elTop > container.scrollTop + container.clientHeight - 60) {
+                    container.scrollTo({ top: elTop - 80, behavior: 'smooth' });
+                }
+            }
+        }
+    };
+
+    window.speechSynthesis.speak(speechUtterance);
+}
+
+// ── Click on progress bar to seek ────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    const bar = document.querySelector('.nb-progress-bar');
+    if (bar) {
+        bar.style.cursor = 'pointer';
+        bar.addEventListener('click', (e) => {
+            const rect = bar.getBoundingClientRect();
+            const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            document.getElementById('audioProgress').style.width = (pct * 100) + '%';
+
+            if (audioEl && !usingBrowserTTS && audioEl.duration) {
+                // MP3 mode — direct seek
+                audioEl.currentTime = pct * audioEl.duration;
+            } else if (usingBrowserTTS && audioScriptText) {
+                // Browser TTS — seek to character position
+                const seekChar = Math.floor(pct * audioScriptText.length);
+                window.speechSynthesis.cancel();
+                startBrowserTTS(seekChar);
+            }
+        });
+    }
+});
+
+// ═══════════ MIND MAPS (AI-Generated Image) ═══════════
+let mmState = { scale: 1, panX: 0, panY: 0, dragging: false, dragStart: null, imgW: 0, imgH: 0 };
+let mmCurrentSrc = null;
+
+function loadMindmap(chapterIdx, btn) {
+    document.querySelectorAll('#panelMindmap .nb-chapter-select-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    document.getElementById('mindmapPlaceholder').style.display = 'none';
+    document.getElementById('mindmapImageContainer').style.display = '';
+    document.getElementById('mindmapLoading').style.display = 'flex';
+    document.getElementById('mindmapImageContainer').innerHTML = '';
+
+    fetch(`/notebook/${BOOK_ID}/mindmap/${chapterIdx}`)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('mindmapLoading').style.display = 'none';
+            if (data.error) {
+                document.getElementById('mindmapImageContainer').innerHTML = `<p style="color:#e53935;padding:24px;">${data.error}</p>`;
+                return;
+            }
+            renderMindmap(data);
+        })
+        .catch(err => {
+            document.getElementById('mindmapLoading').style.display = 'none';
+            document.getElementById('mindmapImageContainer').innerHTML = `<p style="color:#e53935;padding:24px;">Error: ${err}</p>`;
+        });
+}
+
+function renderMindmap(data) {
+    const container = document.getElementById('mindmapImageContainer');
+    mmCurrentSrc = data.image;
+    container.innerHTML = `
+        <div class="ig-toolbar">
+            <span class="ig-zoom-label" id="mmZoomLabel">100%</span>
+            <button class="ig-tool-btn" onclick="mmZoomIn()" title="Zoom In">
+                <span class="material-symbols-rounded" style="font-size:20px;">zoom_in</span>
+            </button>
+            <button class="ig-tool-btn" onclick="mmZoomOut()" title="Zoom Out">
+                <span class="material-symbols-rounded" style="font-size:20px;">zoom_out</span>
+            </button>
+            <button class="ig-tool-btn" onclick="mmZoomReset()" title="Fit to View">
+                <span class="material-symbols-rounded" style="font-size:20px;">fit_screen</span>
+            </button>
+            <button class="ig-download-btn" onclick="downloadMindmap()">
+                <span class="material-symbols-rounded" style="font-size:18px;">download</span> Download PNG
+            </button>
+        </div>
+        <div class="ig-viewport" id="mmViewport">
+            <img id="mindmapImage" src="${data.image}" alt="Mind Map" draggable="false"
+                 style="position:absolute;transform-origin:0 0;max-width:none;"
+                 onload="mmFitImage(this)" />
+        </div>`;
+}
+
+/* ── Mind Map Image Fit & Zoom/Pan ─────────────── */
+function mmFitImage(img) {
+    mmState.imgW = img.naturalWidth;
+    mmState.imgH = img.naturalHeight;
+    const vp = document.getElementById('mmViewport');
+    if (!vp) return;
+    const fitScale = Math.min(vp.clientWidth / mmState.imgW, vp.clientHeight / mmState.imgH, 1);
+    mmState.scale = fitScale;
+    mmState.panX = (vp.clientWidth - mmState.imgW * fitScale) / 2;
+    mmState.panY = (vp.clientHeight - mmState.imgH * fitScale) / 2;
+    mmApplyTransform();
+    mmSetupInteraction();
+}
+
+function mmApplyTransform() {
+    const img = document.getElementById('mindmapImage');
+    if (!img) return;
+    img.style.transform = `translate(${mmState.panX}px, ${mmState.panY}px) scale(${mmState.scale})`;
+    const lbl = document.getElementById('mmZoomLabel');
+    if (lbl) lbl.textContent = Math.round(mmState.scale * 100) + '%';
+}
+function mmZoomIn() { mmState.scale = Math.min(mmState.scale * 1.25, 5); mmApplyTransform(); }
+function mmZoomOut() { mmState.scale = Math.max(mmState.scale * 0.8, 0.1); mmApplyTransform(); }
+function mmZoomReset() {
+    const vp = document.getElementById('mmViewport');
+    if (!vp) return;
+    const fitScale = Math.min(vp.clientWidth / mmState.imgW, vp.clientHeight / mmState.imgH, 1);
+    mmState.scale = fitScale;
+    mmState.panX = (vp.clientWidth - mmState.imgW * fitScale) / 2;
+    mmState.panY = (vp.clientHeight - mmState.imgH * fitScale) / 2;
+    mmApplyTransform();
+}
+
+function mmSetupInteraction() {
+    const vp = document.getElementById('mmViewport');
+    if (!vp || vp._mmBound) return;
+    vp._mmBound = true;
+
+    vp.addEventListener('wheel', e => {
+        e.preventDefault();
+        const rect = vp.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const oldScale = mmState.scale;
+        const factor = e.deltaY < 0 ? 1.12 : 0.89;
+        mmState.scale = Math.max(0.1, Math.min(5, mmState.scale * factor));
+        mmState.panX = mx - (mx - mmState.panX) * (mmState.scale / oldScale);
+        mmState.panY = my - (my - mmState.panY) * (mmState.scale / oldScale);
+        mmApplyTransform();
+    }, { passive: false });
+
+    vp.addEventListener('mousedown', e => {
+        mmState.dragging = true;
+        mmState.dragStart = { x: e.clientX - mmState.panX, y: e.clientY - mmState.panY };
+        vp.style.cursor = 'grabbing';
+    });
+    window.addEventListener('mousemove', e => {
+        if (!mmState.dragging) return;
+        mmState.panX = e.clientX - mmState.dragStart.x;
+        mmState.panY = e.clientY - mmState.dragStart.y;
+        mmApplyTransform();
+    });
+    window.addEventListener('mouseup', () => {
+        mmState.dragging = false;
+        const v = document.getElementById('mmViewport');
+        if (v) v.style.cursor = 'grab';
+    });
+    vp.style.cursor = 'grab';
+
+    let lastTouch = null;
+    vp.addEventListener('touchstart', e => {
+        if (e.touches.length === 1) lastTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }, { passive: true });
+    vp.addEventListener('touchmove', e => {
+        if (e.touches.length === 1 && lastTouch) {
+            mmState.panX += e.touches[0].clientX - lastTouch.x;
+            mmState.panY += e.touches[0].clientY - lastTouch.y;
+            lastTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            mmApplyTransform();
+        }
+    }, { passive: true });
+    vp.addEventListener('touchend', () => { lastTouch = null; }, { passive: true });
+}
+
+function downloadMindmap() {
+    if (!mmCurrentSrc) return;
+    const a = document.createElement('a');
+    a.download = 'mind-map.png';
+    a.href = mmCurrentSrc;
+    a.click();
+}
+
+// ═══════════ INFOGRAPHICS (AI-Generated Image) ════════════
+let igState = { scale: 1, panX: 0, panY: 0, dragging: false, dragStart: null, imgW: 0, imgH: 0 };
+let igCurrentSrc = null;
+
+function loadInfog(chapterIdx, btn) {
+    document.querySelectorAll('#panelInfog .nb-chapter-select-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    document.getElementById('infogPlaceholder').style.display = 'none';
+    document.getElementById('infogContainer').style.display = '';
+    document.getElementById('infogLoading').style.display = 'flex';
+    document.getElementById('infogContainer').innerHTML = '';
+
+    fetch(`/notebook/${BOOK_ID}/infographic/${chapterIdx}`)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('infogLoading').style.display = 'none';
+            if (data.error) {
+                document.getElementById('infogContainer').innerHTML = `<p style="color:#e53935;padding:24px;">${data.error}</p>`;
+                return;
+            }
+            renderInfog(data);
+        })
+        .catch(err => {
+            document.getElementById('infogLoading').style.display = 'none';
+            document.getElementById('infogContainer').innerHTML = `<p style="color:#e53935;padding:24px;">Error: ${err}</p>`;
+        });
+}
+
+function renderInfog(data) {
+    const container = document.getElementById('infogContainer');
+    igCurrentSrc = data.image;
+    container.innerHTML = `
+        <div class="ig-toolbar">
+            <span class="ig-zoom-label" id="igZoomLabel">100%</span>
+            <button class="ig-tool-btn" onclick="igZoomIn()" title="Zoom In">
+                <span class="material-symbols-rounded" style="font-size:20px;">zoom_in</span>
+            </button>
+            <button class="ig-tool-btn" onclick="igZoomOut()" title="Zoom Out">
+                <span class="material-symbols-rounded" style="font-size:20px;">zoom_out</span>
+            </button>
+            <button class="ig-tool-btn" onclick="igZoomReset()" title="Fit to View">
+                <span class="material-symbols-rounded" style="font-size:20px;">fit_screen</span>
+            </button>
+            <button class="ig-download-btn" onclick="downloadInfog()">
+                <span class="material-symbols-rounded" style="font-size:18px;">download</span> Download PNG
+            </button>
+        </div>
+        <div class="ig-viewport" id="igViewport">
+            <img id="infogImage" src="${data.image}" alt="Infographic" draggable="false"
+                 style="position:absolute;transform-origin:0 0;max-width:none;"
+                 onload="igFitImage(this)" />
+        </div>`;
+}
+
+/* ── Image Fit & Zoom/Pan ──────────────────────── */
+function igFitImage(img) {
+    igState.imgW = img.naturalWidth;
+    igState.imgH = img.naturalHeight;
+    const vp = document.getElementById('igViewport');
+    if (!vp) return;
+    const fitScale = Math.min(vp.clientWidth / igState.imgW, vp.clientHeight / igState.imgH, 1);
+    igState.scale = fitScale;
+    igState.panX = (vp.clientWidth - igState.imgW * fitScale) / 2;
+    igState.panY = (vp.clientHeight - igState.imgH * fitScale) / 2;
+    igApplyTransform();
+    igSetupInteraction();
+}
+
+function igApplyTransform() {
+    const img = document.getElementById('infogImage');
+    if (!img) return;
+    img.style.transform = `translate(${igState.panX}px, ${igState.panY}px) scale(${igState.scale})`;
+    const lbl = document.getElementById('igZoomLabel');
+    if (lbl) lbl.textContent = Math.round(igState.scale * 100) + '%';
+}
+function igZoomIn() { igState.scale = Math.min(igState.scale * 1.25, 5); igApplyTransform(); }
+function igZoomOut() { igState.scale = Math.max(igState.scale * 0.8, 0.1); igApplyTransform(); }
+function igZoomReset() {
+    const vp = document.getElementById('igViewport');
+    if (!vp) return;
+    const fitScale = Math.min(vp.clientWidth / igState.imgW, vp.clientHeight / igState.imgH, 1);
+    igState.scale = fitScale;
+    igState.panX = (vp.clientWidth - igState.imgW * fitScale) / 2;
+    igState.panY = (vp.clientHeight - igState.imgH * fitScale) / 2;
+    igApplyTransform();
+}
+
+function igSetupInteraction() {
+    const vp = document.getElementById('igViewport');
+    if (!vp || vp._igBound) return;
+    vp._igBound = true;
+
+    vp.addEventListener('wheel', e => {
+        e.preventDefault();
+        const rect = vp.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const oldScale = igState.scale;
+        const factor = e.deltaY < 0 ? 1.12 : 0.89;
+        igState.scale = Math.max(0.1, Math.min(5, igState.scale * factor));
+        igState.panX = mx - (mx - igState.panX) * (igState.scale / oldScale);
+        igState.panY = my - (my - igState.panY) * (igState.scale / oldScale);
+        igApplyTransform();
+    }, { passive: false });
+
+    vp.addEventListener('mousedown', e => {
+        igState.dragging = true;
+        igState.dragStart = { x: e.clientX - igState.panX, y: e.clientY - igState.panY };
+        vp.style.cursor = 'grabbing';
+    });
+    window.addEventListener('mousemove', e => {
+        if (!igState.dragging) return;
+        igState.panX = e.clientX - igState.dragStart.x;
+        igState.panY = e.clientY - igState.dragStart.y;
+        igApplyTransform();
+    });
+    window.addEventListener('mouseup', () => {
+        igState.dragging = false;
+        const v = document.getElementById('igViewport');
+        if (v) v.style.cursor = 'grab';
+    });
+    vp.style.cursor = 'grab';
+
+    let lastTouch = null;
+    vp.addEventListener('touchstart', e => {
+        if (e.touches.length === 1) lastTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }, { passive: true });
+    vp.addEventListener('touchmove', e => {
+        if (e.touches.length === 1 && lastTouch) {
+            igState.panX += e.touches[0].clientX - lastTouch.x;
+            igState.panY += e.touches[0].clientY - lastTouch.y;
+            lastTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            igApplyTransform();
+        }
+    }, { passive: true });
+    vp.addEventListener('touchend', () => { lastTouch = null; }, { passive: true });
+}
+
+function downloadInfog() {
+    if (!igCurrentSrc) return;
+    const a = document.createElement('a');
+    a.download = 'infographic.png';
+    a.href = igCurrentSrc;
+    a.click();
+}
+
+// ═══════════ FLASH CARDS ═════════════════════════
+function loadFlashcards(chapterIdx, topicIdx, btn) {
+    document.querySelectorAll('#panelFlashcards .nb-topic-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('superLastMinBtn').classList.remove('active');
+    btn.classList.add('active');
+
+    document.getElementById('cardsPlaceholder').style.display = 'none';
+    document.getElementById('cardsArea').style.display = 'none';
+    document.getElementById('cardsLoading').style.display = 'flex';
+
+    fetch(`/notebook/${BOOK_ID}/flashcards/${chapterIdx}/${topicIdx}`)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('cardsLoading').style.display = 'none';
+            if (data.error) {
+                document.getElementById('cardsArea').style.display = '';
+                document.getElementById('cardPointText').textContent = data.error;
+                return;
+            }
+            currentCards = data.cards || [];
+            currentCardIdx = 0;
+            document.getElementById('cardsArea').style.display = '';
+            showCard(0);
+        })
+        .catch(err => {
+            document.getElementById('cardsLoading').style.display = 'none';
+        });
+}
+
+function showCard(idx) {
+    if (!currentCards.length) return;
+    if (idx < 0) idx = currentCards.length - 1;
+    if (idx >= currentCards.length) idx = 0;
+    currentCardIdx = idx;
+
+    const card = currentCards[idx];
+    // Support both old format (front/back) and new format (point/detail)
+    document.getElementById('cardPointText').textContent = card.point || card.front || '';
+    document.getElementById('cardDetailText').textContent = card.detail || card.back || '';
+    document.getElementById('cardCounter').textContent = `${idx + 1} / ${currentCards.length} cards`;
+    document.getElementById('flashcardEl').classList.remove('flipped');
+
+    // Progress bar
+    const pct = ((idx + 1) / currentCards.length) * 100;
+    document.getElementById('fcProgressBar').style.width = pct + '%';
+}
+
+function flipCard() {
+    document.getElementById('flashcardEl').classList.toggle('flipped');
+}
+
+function nextCard() { showCard(currentCardIdx + 1); }
+function prevCard() { showCard(currentCardIdx - 1); }
+
+function loadSuperCards(btn) {
+    document.querySelectorAll('#panelFlashcards .nb-topic-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('superLastMinBtn').classList.add('active');
+
+    document.getElementById('cardsPlaceholder').style.display = 'none';
+    document.getElementById('cardsArea').style.display = 'none';
+    document.getElementById('cardsLoading').style.display = 'flex';
+
+    fetch(`/notebook/${BOOK_ID}/flashcards/super`)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('cardsLoading').style.display = 'none';
+            if (data.error) {
+                document.getElementById('cardsArea').style.display = '';
+                document.getElementById('cardPointText').textContent = data.error;
+                return;
+            }
+            currentCards = data.cards || [];
+            currentCardIdx = 0;
+            document.getElementById('cardsArea').style.display = '';
+            showCard(0);
+        })
+        .catch(err => {
+            document.getElementById('cardsLoading').style.display = 'none';
+            alert('Error loading super cards: ' + err);
+        });
+}
+function restartCards() { showCard(0); }
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+    if (document.getElementById('panelFlashcards').style.display !== 'none') {
+        if (e.key === 'ArrowRight') nextCard();
+        if (e.key === 'ArrowLeft') prevCard();
+        if (e.key === ' ') { e.preventDefault(); flipCard(); }
+    }
+});
+
+function esc(str) {
+    if (!str) return '';
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
+// ═══════════ CHEAT SHEET ═════════════════════════
+let csLoaded = false;
+
+function loadCheatSheet() {
+    if (csLoaded) return;
+
+    document.getElementById('csGenerateBtn').style.display = 'none';
+    document.getElementById('csLoading').style.display = '';
+    document.getElementById('csContent').style.display = 'none';
+    document.getElementById('csNav').style.display = 'none';
+
+    fetch(`/notebook/${BOOK_ID}/cheatsheet`)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('csLoading').style.display = 'none';
+            if (data.error) {
+                document.getElementById('csGenerateBtn').style.display = '';
+                alert('Error: ' + data.error);
+                return;
+            }
+            csLoaded = true;
+            renderCheatSheet(data);
+        })
+        .catch(err => {
+            document.getElementById('csLoading').style.display = 'none';
+            document.getElementById('csGenerateBtn').style.display = '';
+            alert('Error loading cheat sheet: ' + err);
+        });
+}
+
+function renderCheatSheet(data) {
+    const content = document.getElementById('csContent');
+    const navChips = document.getElementById('csNavChips');
+
+    if (data.book_title) {
+        document.getElementById('csTitle').textContent = data.book_title + ' — Cheat Sheet';
+    }
+
+    const chapters = data.chapters || [];
+    let html = '';
+    let chipHtml = '';
+
+    chapters.forEach((ch, idx) => {
+        const anchorId = 'cs-ch-' + idx;
+
+        // Nav chip
+        chipHtml += `<a class="cs-nav-chip" href="#${anchorId}" onclick="scrollToChapter(event, '${anchorId}')">${ch.title}</a>`;
+
+        // Chapter section
+        html += `<div class="cs-chapter" id="${anchorId}">`;
+        html += `<div class="cs-ch-header">`;
+        html += `<span class="cs-ch-num">${idx + 1}</span>`;
+        html += `<h3 class="cs-ch-title">${esc(ch.title)}</h3>`;
+        html += `</div>`;
+        html += `<div class="cs-points">`;
+
+        (ch.points || []).forEach((pt, ptIdx) => {
+            html += `<div class="cs-point">`;
+            html += `<span class="cs-point-num">${ptIdx + 1}</span>`;
+            html += `<div class="cs-point-body">`;
+            html += `<p class="cs-point-text">${esc(pt.text)}</p>`;
+            if (pt.reference && pt.reference !== '—') {
+                html += `<span class="cs-point-ref">${esc(pt.reference)}</span>`;
+            }
+            html += `</div>`;
+            html += `</div>`;
+        });
+
+        html += `</div></div>`;
+    });
+
+    navChips.innerHTML = chipHtml;
+    content.innerHTML = html;
+    document.getElementById('csNav').style.display = '';
+    content.style.display = '';
+    document.getElementById('csGenerateBtn').innerHTML =
+        '<span class="material-symbols-rounded" style="font-size:18px;">check_circle</span> Generated';
+    document.getElementById('csGenerateBtn').style.display = '';
+    document.getElementById('csGenerateBtn').disabled = true;
+    document.getElementById('csGenerateBtn').classList.add('cs-btn-done');
+}
+
+function scrollToChapter(e, anchorId) {
+    e.preventDefault();
+    const el = document.getElementById(anchorId);
+    if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+// ═══════════ QUIZ ════════════════════════════════
+let quizQuestions = [];
+let quizAnswers = [];      // user's selected option index per question (-1 = skipped)
+let quizCurrentIdx = 0;
+let quizSelectedChapter = -1;
+let quizDifficulty = '';
+
+function selectQuizChapter(chapterIdx, btn) {
+    document.querySelectorAll('#panelQuiz .nb-chapter-select-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    quizSelectedChapter = chapterIdx;
+
+    // Show difficulty picker, hide others
+    document.getElementById('quizPlaceholder').style.display = 'none';
+    document.getElementById('quizArea').style.display = 'none';
+    document.getElementById('quizResults').style.display = 'none';
+    document.getElementById('quizLoading').style.display = 'none';
+    document.getElementById('quizDifficulty').style.display = '';
+
+    document.getElementById('quizChTitle').textContent = 'Quiz on ' + btn.dataset.title;
+    // Reset difficulty selections
+    document.querySelectorAll('.quiz-diff-btn').forEach(b => b.classList.remove('quiz-diff-active'));
+    document.getElementById('quizStartBtn').disabled = true;
+}
+
+function toggleDifficulty(btn) {
+    btn.classList.toggle('quiz-diff-active');
+    const anySelected = document.querySelectorAll('.quiz-diff-btn.quiz-diff-active').length > 0;
+    document.getElementById('quizStartBtn').disabled = !anySelected;
+}
+
+function startMultiQuiz() {
+    const selected = [...document.querySelectorAll('.quiz-diff-btn.quiz-diff-active')].map(b => b.dataset.diff);
+    if (!selected.length) return;
+
+    quizDifficulty = selected.join('+');
+    document.getElementById('quizDifficulty').style.display = 'none';
+    document.getElementById('quizLoading').style.display = 'flex';
+    document.getElementById('quizArea').style.display = 'none';
+    document.getElementById('quizResults').style.display = 'none';
+
+    // Fetch all selected difficulties in parallel and merge
+    Promise.all(selected.map(d =>
+        fetch(`/notebook/${BOOK_ID}/quiz/${quizSelectedChapter}/${d}`).then(r => r.json())
+    ))
+    .then(results => {
+        document.getElementById('quizLoading').style.display = 'none';
+        const errResult = results.find(r => r.error);
+        if (errResult) {
+            document.getElementById('quizDifficulty').style.display = '';
+            alert('Error: ' + errResult.error);
+            return;
+        }
+        // Take equal share from each difficulty, total = 10
+        const TOTAL = 10;
+        const perDiff = Math.floor(TOTAL / results.length);
+        let allQuestions = [];
+        results.forEach((r, i) => {
+            const qs = r.questions || [];
+            // Last bucket gets any remainder to hit exactly 10
+            const take = (i === results.length - 1) ? TOTAL - allQuestions.length : perDiff;
+            allQuestions = allQuestions.concat(qs.slice(0, take));
+        });
+        // Shuffle
+        for (let i = allQuestions.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [allQuestions[i], allQuestions[j]] = [allQuestions[j], allQuestions[i]];
+        }
+        quizQuestions = allQuestions;
+        quizAnswers = new Array(quizQuestions.length).fill(-1);
+        quizCurrentIdx = 0;
+        renderQuizDots();
+        showQuizQuestion(0);
+        document.getElementById('quizArea').style.display = '';
+    })
+    .catch(err => {
+        document.getElementById('quizLoading').style.display = 'none';
+        document.getElementById('quizDifficulty').style.display = '';
+        alert('Error loading quiz: ' + err);
+    });
+}
+
+function renderQuizDots() {
+    const dots = document.getElementById('quizDots');
+    dots.innerHTML = quizQuestions.map((_, i) =>
+        `<span class="quiz-dot ${i === quizCurrentIdx ? 'quiz-dot-current' : ''}" onclick="jumpToQuestion(${i})" title="Q${i+1}"></span>`
+    ).join('');
+}
+
+function updateQuizDots() {
+    const dotEls = document.querySelectorAll('#quizDots .quiz-dot');
+    dotEls.forEach((d, i) => {
+        d.className = 'quiz-dot';
+        if (i === quizCurrentIdx) d.classList.add('quiz-dot-current');
+        if (quizAnswers[i] >= 0) d.classList.add('quiz-dot-answered');
+    });
+}
+
+function jumpToQuestion(idx) {
+    if (idx >= 0 && idx < quizQuestions.length) {
+        showQuizQuestion(idx);
+    }
+}
+
+function showQuizQuestion(idx) {
+    quizCurrentIdx = idx;
+    const q = quizQuestions[idx];
+    document.getElementById('quizProgressText').textContent = `Question ${idx + 1} / ${quizQuestions.length}`;
+    document.getElementById('quizProgressBar').style.width = ((idx + 1) / quizQuestions.length * 100) + '%';
+    document.getElementById('quizQText').textContent = q.question;
+
+    const optDiv = document.getElementById('quizOptions');
+    optDiv.innerHTML = q.options.map((opt, oi) => {
+        const selected = quizAnswers[idx] === oi ? ' quiz-opt-selected' : '';
+        return `<button class="quiz-opt${selected}" data-idx="${oi}" onclick="selectOption(${oi})">${esc(opt)}</button>`;
+    }).join('');
+
+    document.getElementById('quizSubmitBtn').disabled = quizAnswers[idx] < 0;
+
+    // Show skip/submit or "Next" if already answered
+    document.getElementById('quizSkipBtn').style.display = '';
+    document.getElementById('quizSubmitBtn').style.display = '';
+
+    updateQuizDots();
+}
+
+function selectOption(optIdx) {
+    quizAnswers[quizCurrentIdx] = optIdx;
+    document.querySelectorAll('#quizOptions .quiz-opt').forEach((btn, i) => {
+        btn.classList.toggle('quiz-opt-selected', i === optIdx);
+    });
+    document.getElementById('quizSubmitBtn').disabled = false;
+}
+
+function submitAnswer() {
+    if (quizAnswers[quizCurrentIdx] < 0) return;
+    goToNextOrFinish();
+}
+
+function skipQuestion() {
+    quizAnswers[quizCurrentIdx] = -1;
+    goToNextOrFinish();
+}
+
+function goToNextOrFinish() {
+    if (quizCurrentIdx < quizQuestions.length - 1) {
+        showQuizQuestion(quizCurrentIdx + 1);
+    } else {
+        showQuizResults();
+    }
+}
+
+function showQuizResults() {
+    document.getElementById('quizArea').style.display = 'none';
+    document.getElementById('quizResults').style.display = '';
+
+    let correct = 0, incorrect = 0, skipped = 0;
+    quizQuestions.forEach((q, i) => {
+        if (quizAnswers[i] < 0) skipped++;
+        else if (quizAnswers[i] === q.correct) correct++;
+        else incorrect++;
+    });
+
+    const total = quizQuestions.length;
+    const pct = Math.round((correct / total) * 100);
+
+    let grade = '';
+    if (pct >= 80) grade = 'Excellent!';
+    else if (pct >= 60) grade = 'Good job!';
+    else if (pct >= 40) grade = 'Needs improvement';
+    else grade = 'Keep studying!';
+
+    let html = `
+        <div class="quiz-score-card">
+            <h2 class="quiz-score-title">Quiz Complete</h2>
+            <div class="quiz-score-ring">
+                <svg viewBox="0 0 120 120" width="120" height="120">
+                    <circle cx="60" cy="60" r="52" fill="none" stroke="#e0e0e0" stroke-width="8"/>
+                    <circle cx="60" cy="60" r="52" fill="none" stroke="${pct >= 60 ? '#4caf50' : pct >= 40 ? '#ff9800' : '#e53935'}"
+                        stroke-width="8" stroke-linecap="round"
+                        stroke-dasharray="${2 * Math.PI * 52}" stroke-dashoffset="${2 * Math.PI * 52 * (1 - pct / 100)}"
+                        transform="rotate(-90 60 60)"/>
+                </svg>
+                <span class="quiz-score-pct">${pct}%</span>
+            </div>
+            <p class="quiz-score-grade">${grade}</p>
+            <div class="quiz-score-stats">
+                <div class="quiz-stat quiz-stat-correct"><span class="material-symbols-rounded">check_circle</span> ${correct} Correct</div>
+                <div class="quiz-stat quiz-stat-wrong"><span class="material-symbols-rounded">cancel</span> ${incorrect} Incorrect</div>
+                <div class="quiz-stat quiz-stat-skip"><span class="material-symbols-rounded">remove_circle</span> ${skipped} Skipped</div>
+            </div>
+            <button class="quiz-retake-btn" onclick="retakeQuiz()">
+                <span class="material-symbols-rounded" style="font-size:18px;">refresh</span> Retake Quiz
+            </button>
+        </div>
+        <h3 class="quiz-review-heading">Answer Review</h3>
+        <div class="quiz-review-list">`;
+
+    quizQuestions.forEach((q, i) => {
+        const ans = quizAnswers[i];
+        let status, statusClass, statusIcon;
+        if (ans < 0) {
+            status = 'Skipped'; statusClass = 'quiz-rev-skip'; statusIcon = 'remove_circle';
+        } else if (ans === q.correct) {
+            status = 'Correct'; statusClass = 'quiz-rev-correct'; statusIcon = 'check_circle';
+        } else {
+            status = 'Incorrect'; statusClass = 'quiz-rev-wrong'; statusIcon = 'cancel';
+        }
+
+        html += `
+            <div class="quiz-rev-item ${statusClass}" onclick="toggleReveal(this)">
+                <div class="quiz-rev-header">
+                    <span class="quiz-rev-num">Q${i + 1}</span>
+                    <span class="quiz-rev-q">${esc(q.question)}</span>
+                    <span class="material-symbols-rounded quiz-rev-icon">${statusIcon}</span>
+                </div>
+                <div class="quiz-rev-detail" style="display:none;">
+                    <div class="quiz-rev-options">
+                        ${q.options.map((opt, oi) => {
+                            let cls = 'quiz-rev-opt';
+                            if (oi === q.correct) cls += ' quiz-rev-opt-correct';
+                            if (oi === ans && ans !== q.correct) cls += ' quiz-rev-opt-wrong';
+                            let icon = '';
+                            if (oi === q.correct) icon = '<span class="material-symbols-rounded" style="font-size:16px;color:#4caf50;">check_circle</span>';
+                            else if (oi === ans && ans !== q.correct) icon = '<span class="material-symbols-rounded" style="font-size:16px;color:#e53935;">cancel</span>';
+                            return `<div class="${cls}">${icon} ${esc(opt)}</div>`;
+                        }).join('')}
+                    </div>
+                    ${ans >= 0 && ans !== q.correct ? `<div class="quiz-rev-your-ans">Your answer: ${esc(q.options[ans])}</div>` : ''}
+                    <div class="quiz-rev-explain">
+                        <span class="material-symbols-rounded" style="font-size:16px;vertical-align:middle;color:#7c4dff;">lightbulb</span>
+                        <span>${esc(q.explanation)}</span>
+                    </div>
+                </div>
+            </div>`;
+    });
+
+    html += '</div>';
+    document.getElementById('quizResults').innerHTML = html;
+}
+
+function toggleReveal(el) {
+    const detail = el.querySelector('.quiz-rev-detail');
+    const isOpen = detail.style.display !== 'none';
+    detail.style.display = isOpen ? 'none' : '';
+    el.classList.toggle('quiz-rev-expanded', !isOpen);
+}
+
+function retakeQuiz() {
+    // Clear cache for this quiz and restart
+    document.getElementById('quizResults').style.display = 'none';
+    document.getElementById('quizDifficulty').style.display = '';
+}
+
+// Keyboard shortcuts for quiz
+document.addEventListener('keydown', e => {
+    if (document.getElementById('panelQuiz').style.display !== 'none'
+        && document.getElementById('quizArea').style.display !== 'none') {
+        if (e.key >= '1' && e.key <= '4') {
+            e.preventDefault();
+            selectOption(parseInt(e.key) - 1);
+        }
+        if (e.key === 'Enter' && quizAnswers[quizCurrentIdx] >= 0) {
+            e.preventDefault();
+            submitAnswer();
+        }
+        if (e.key === 's' || e.key === 'S') {
+            e.preventDefault();
+            skipQuestion();
+        }
+    }
+});
+
+// \u2550\u2550\u2550\u2550\u2550 END QUIZ \u2550\u2550\u2550\u2550\u2550
+
+// ── Auto-load structure if missing ───────────────
+{% if not structure %}
+(function loadStructure() {
+    fetch(`/notebook/${BOOK_ID}/structure`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('nbLoading').innerHTML = `<p style="color:#e53935;">${data.error}</p>`;
+                return;
+            }
+            // Reload page to render with new structure
+            location.reload();
+        })
+        .catch(() => {
+            document.getElementById('nbLoading').innerHTML = `<p style="color:#e53935;">Failed to analyze book structure.</p>`;
+        });
+})();
+{% endif %}
+
+// Load voices for speech synthesis
+window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+</script>
+{% endblock %}

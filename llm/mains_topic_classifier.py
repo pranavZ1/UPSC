@@ -1,0 +1,73 @@
+# llm/mains_topic_classifier.py — Classify input text into UPSC Mains topic path
+#
+# Returns (main_topic, subtopic, sub_subtopic) for GS1–GS4 placement.
+
+from llm.gemini_client import call_gemini
+from config import VALID_MAINS_TOPICS
+from topics.mains_topic_list import (
+    MAINS_FLAT_TOPIC_LIST, MAINS_TOPIC_HIERARCHY,
+    parse_mains_topic_path, find_best_mains_subtopic, find_best_mains_sub_subtopic,
+)
+
+
+def classify_mains_topic(text: str) -> tuple[str, str, str]:
+    """
+    Classify a chunk of text into a 3-level UPSC Mains topic path.
+
+    Returns:
+        (main_topic, subtopic, sub_subtopic)
+        e.g. ("Economy", "Macroeconomics", "Growth vs development; inclusion; inequality")
+    """
+    topic_str = "\n".join(f"  - {t}" for t in MAINS_FLAT_TOPIC_LIST)
+
+    prompt = f"""You are an expert UPSC Mains syllabus classifier.
+
+TASK:
+Read the content below and classify it into exactly ONE topic path from the list.
+These topics correspond to GS Papers 1-4 of UPSC Mains examination.
+A topic path has 3 levels separated by ' | ':
+    Main Topic | Subtopic | Sub-subtopic
+
+Return ONLY the topic path — nothing else.
+
+VALID TOPIC PATHS:
+{topic_str}
+
+RULES:
+- Pick the SINGLE BEST matching topic path.
+- Return the path EXACTLY as written above (case-sensitive, pipe-separated).
+- Do NOT explain your reasoning.
+- Do NOT return anything other than the topic path.
+- If unsure, default to "Economy | Macroeconomics | Growth vs development; inclusion; inequality".
+
+CONTENT:
+{text[:6000]}
+
+YOUR ANSWER (topic path only):"""
+
+    raw = call_gemini(prompt).strip()
+
+    main, sub, subsub = parse_mains_topic_path(raw)
+
+    # Validate main topic
+    matched_main = None
+    for t in VALID_MAINS_TOPICS:
+        if t.lower() in main.lower() or main.lower() in t.lower():
+            matched_main = t
+            break
+    if not matched_main:
+        matched_main = "Economy"
+
+    # Validate subtopic
+    matched_sub = find_best_mains_subtopic(matched_main, sub) if sub else ""
+    if not matched_sub:
+        subtopics = list(MAINS_TOPIC_HIERARCHY.get(matched_main, {}).keys())
+        matched_sub = subtopics[0] if subtopics else ""
+
+    # Validate sub-subtopic
+    matched_subsub = find_best_mains_sub_subtopic(matched_main, matched_sub, subsub) if subsub else ""
+    if not matched_subsub:
+        subs = MAINS_TOPIC_HIERARCHY.get(matched_main, {}).get(matched_sub, [])
+        matched_subsub = subs[0] if subs else ""
+
+    return (matched_main, matched_sub, matched_subsub)
