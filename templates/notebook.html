@@ -11,9 +11,14 @@
         <h1 class="nb-title">🧠 NotebookLLM</h1>
         <p class="nb-subtitle">{{ book.title }}</p>
     </div>
-    <a href="{{ url_for('book_viewer', book_id=book.id) }}" class="btn btn-sm btn-primary">
-        <span class="material-symbols-rounded" style="font-size:16px;">auto_stories</span> Read Book
-    </a>
+    <div style="display:flex;gap:8px;align-items:center;">
+        <button class="btn btn-sm btn-accent" id="generateAllBtn" style="display:none;" onclick="triggerGenerateAll()">
+            <span class="material-symbols-rounded" style="font-size:16px;">auto_awesome</span> Generate All Assets
+        </button>
+        <a href="{{ url_for('book_viewer', book_id=book.id) }}" class="btn btn-sm btn-primary">
+            <span class="material-symbols-rounded" style="font-size:16px;">auto_stories</span> Read Book
+        </a>
+    </div>
 </div>
 
 <!-- Feature Tabs -->
@@ -436,6 +441,7 @@ function pollPipeline() {
 
         if (status === 'pending' || status === 'running') {
             banner.style.display = '';
+            document.getElementById('generateAllBtn').style.display = 'none';
             document.getElementById('pipelineTitle').textContent =
                 status === 'pending' ? 'Pipeline Queued…' : 'Generating Assets…';
             document.getElementById('pipelineTask').textContent = data.current_task || 'Starting…';
@@ -472,6 +478,7 @@ function pollPipeline() {
 
         } else if (status === 'completed') {
             banner.style.display = '';
+            document.getElementById('generateAllBtn').style.display = 'none';
             document.getElementById('pipelineTitle').textContent = 'All Assets Generated!';
             document.getElementById('pipelineTask').textContent = 'Everything is ready. Enjoy your study session!';
             document.getElementById('pipelineIcon').textContent = 'check_circle';
@@ -492,14 +499,40 @@ function pollPipeline() {
             document.getElementById('pipelineTask').textContent = data.error || 'Unknown error';
             document.getElementById('pipelineIcon').textContent = 'error';
             document.getElementById('pipelineDismiss').style.display = '';
+            document.getElementById('generateAllBtn').style.display = '';
             clearInterval(pipelineInterval);
         } else {
-            // No pipeline or already dismissed
+            // No pipeline or already dismissed — show Generate All if not completed
             banner.style.display = 'none';
+            document.getElementById('generateAllBtn').style.display = '';
             clearInterval(pipelineInterval);
         }
       })
       .catch(() => {});
+}
+
+// Trigger full asset generation from notebook page
+function triggerGenerateAll() {
+    const btn = document.getElementById('generateAllBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="material-symbols-rounded spin" style="font-size:16px;">sync</span> Starting…';
+    fetch(`/books/${BOOK_ID}/generate-all`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.ok) {
+                btn.style.display = 'none';
+                pipelineInterval = setInterval(pollPipeline, 3000);
+                pollPipeline();
+            } else {
+                btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px;">auto_awesome</span> Generate All Assets';
+                btn.disabled = false;
+                alert(data.error || 'Failed to start pipeline');
+            }
+        })
+        .catch(() => {
+            btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px;">auto_awesome</span> Generate All Assets';
+            btn.disabled = false;
+        });
 }
 
 // Start polling on load

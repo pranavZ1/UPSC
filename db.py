@@ -109,6 +109,16 @@ def article_content_col():
     return get_db()["article_content"]
 
 
+def pyq_questions_col():
+    """PYQ classified questions (one doc per question)."""
+    return get_db()["pyq_questions"]
+
+
+def pyq_explanations_col():
+    """PYQ answer explanations cache."""
+    return get_db()["pyq_explanations"]
+
+
 # ─── Ensure indexes ──────────────────────────────────────────────────────
 
 def ensure_indexes():
@@ -123,4 +133,8 @@ def ensure_indexes():
     quiz_dumps_col().create_index("book_id")
     pipeline_status_col().create_index("book_id")
     article_content_col().create_index([("file_stem", 1), ("category", 1), ("exam", 1)])
+    pyq_questions_col().create_index("year")
+    pyq_questions_col().create_index("topic")
+    pyq_questions_col().create_index("qid", unique=True)
+    pyq_explanations_col().create_index("question_id", unique=True)
     article_content_col().create_index("article_id")

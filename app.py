@@ -659,6 +659,26 @@ def reindex_book(book_id):
     return redirect(url_for("books_page"))
 
 
+@app.route("/books/<book_id>/generate-all", methods=["POST"])
+def generate_all_assets(book_id):
+    """Re-trigger the full asset generation pipeline from the notebook page."""
+    book = get_book(book_id)
+    if not book:
+        return jsonify({"error": "Book not found"}), 404
+
+    pipeline = book.get("pipeline", {})
+    if pipeline.get("status") == "running":
+        return jsonify({"error": "Pipeline already running"}), 409
+
+    pdf_bytes = get_pdf_bytes(book_id)
+    if not pdf_bytes:
+        return jsonify({"error": "PDF not found in database"}), 404
+
+    update_book(book_id, indexing=True, error=None)
+    start_pipeline(book_id, pdf_bytes, book["filename"])
+    return jsonify({"ok": True, "message": "Pipeline started"})
+
+
 @app.route("/books/<book_id>/view")
 def book_viewer(book_id):
     """View book PDF with AI chat panel."""

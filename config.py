@@ -10,12 +10,8 @@ INPUT_DIR = BASE_DIR / "input"
 BOOKS_DIR = BASE_DIR / "books"
 BOOKS_INDEX_DIR = BOOKS_DIR / "indexes"
 
-# Previous Year Questions
-PYQ_DATA_DIR = BASE_DIR.parent / "data" / "upsc_prelims_gs"
-PYQ_CACHE_DIR = BASE_DIR / "pyq" / "cache"
-
 # Create required directories on import
-for d in [INPUT_DIR, BOOKS_INDEX_DIR, PYQ_CACHE_DIR]:
+for d in [INPUT_DIR, BOOKS_INDEX_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 # ─── RAG Settings ─────────────────────────────────────────────────────────

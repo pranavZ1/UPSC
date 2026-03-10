@@ -1,27 +1,19 @@
-# pyq/explainer.py — On-demand answer explanations using Gemini
+# pyq/explainer.py — On-demand answer explanations using Gemini (MongoDB)
 #
 # Generates a concise explanation for why the correct answer is right.
-# Only explains why other options are wrong when it adds educational value.
-# Results are cached per question.
+# Results are cached in the pyq_explanations collection in MongoDB.
 
-import json
-from pathlib import Path
-
-from config import PYQ_CACHE_DIR
-
-EXPLAIN_CACHE_DIR = PYQ_CACHE_DIR / "explanations"
+from db import pyq_explanations_col
 
 
 def get_explanation(question_id: str, question: str, options: dict, answer: str) -> dict:
     """Return cached or freshly-generated explanation for a PYQ question."""
-    EXPLAIN_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    cache_path = EXPLAIN_CACHE_DIR / f"{question_id}.json"
+    col = pyq_explanations_col()
 
-    if cache_path.exists():
-        try:
-            return json.loads(cache_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            pass
+    # Check cache
+    cached = col.find_one({"question_id": question_id}, {"_id": 0})
+    if cached:
+        return cached
 
     from llm.gemini_client import call_gemini
 
@@ -53,8 +45,9 @@ Instructions:
         "explanation": explanation.strip(),
     }
 
-    cache_path.write_text(
-        json.dumps(result, ensure_ascii=False, indent=2),
-        encoding="utf-8",
+    col.update_one(
+        {"question_id": question_id},
+        {"$set": result},
+        upsert=True,
     )
     return result

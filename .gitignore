@@ -45,6 +45,7 @@ book_registry.json
 
 # ─── Test / scratch files ─────────────────────────────────────
 _test_*
+migrate_*.py
 
 # ─── Secrets ──────────────────────────────────────────────────
 .env
