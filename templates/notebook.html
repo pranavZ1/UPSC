@@ -912,41 +912,50 @@ function loadAudio(chapterIdx, topicIdx, btn) {
     document.getElementById('audioScript').innerHTML = '';
     stopAudio();
 
-    fetch(`/notebook/${BOOK_ID}/audio/${chapterIdx}/${topicIdx}`)
-        .then(r => r.json())
-        .then(data => {
-            document.getElementById('audioLoading').style.display = 'none';
-            if (data.error) {
-                document.getElementById('audioScript').innerHTML = `<p style="color:#e53935;">${data.error}</p>`;
-                return;
-            }
-            document.getElementById('audioTopicTitle').textContent = data.title;
-            document.getElementById('audioDuration').textContent = `~${data.duration_estimate}`;
-            audioScriptText = data.script;
+    function poll() {
+        fetch(`/notebook/${BOOK_ID}/audio/${chapterIdx}/${topicIdx}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'generating') {
+                    document.getElementById('audioLoading').querySelector('span').textContent =
+                        'Generating audio script… (may take 30-60 seconds)';
+                    setTimeout(poll, 4000);
+                    return;
+                }
+                document.getElementById('audioLoading').style.display = 'none';
+                if (data.error) {
+                    document.getElementById('audioScript').innerHTML = `<p style="color:#e53935;">${data.error}</p>`;
+                    return;
+                }
+                document.getElementById('audioTopicTitle').textContent = data.title;
+                document.getElementById('audioDuration').textContent = `~${data.duration_estimate}`;
+                audioScriptText = data.script;
 
-            // Render with sentence spans for highlighting
-            renderScriptWithSentences(data.script);
+                // Render with sentence spans for highlighting
+                renderScriptWithSentences(data.script);
 
-            // Init HTML5 audio if MP3 is available
-            if (data.audio_url) {
-                usingBrowserTTS = false;
-                initAudioElement(data.audio_url);
-            } else {
-                // Fallback to browser TTS
-                usingBrowserTTS = true;
-                audioEl = null;
-            }
-            updateTTSBadge();
-            document.getElementById('audioPlayBtn').style.display = '';
+                // Init HTML5 audio if MP3 is available
+                if (data.audio_url) {
+                    usingBrowserTTS = false;
+                    initAudioElement(data.audio_url);
+                } else {
+                    // Fallback to browser TTS
+                    usingBrowserTTS = true;
+                    audioEl = null;
+                }
+                updateTTSBadge();
+                document.getElementById('audioPlayBtn').style.display = '';
 
-            // Reset progress UI
-            document.getElementById('audioProgress').style.width = '0%';
-            document.getElementById('audioCurrentTime').textContent = '0:00';
-        })
-        .catch(err => {
-            document.getElementById('audioLoading').style.display = 'none';
-            document.getElementById('audioScript').innerHTML = `<p style="color:#e53935;">Error: ${err}</p>`;
-        });
+                // Reset progress UI
+                document.getElementById('audioProgress').style.width = '0%';
+                document.getElementById('audioCurrentTime').textContent = '0:00';
+            })
+            .catch(err => {
+                document.getElementById('audioLoading').style.display = 'none';
+                document.getElementById('audioScript').innerHTML = `<p style="color:#e53935;">Error: ${err}</p>`;
+            });
+    }
+    poll();
 }
 
 function togglePlayPause() {
@@ -988,37 +997,47 @@ function loadChapterAudio(chapterIdx, btn) {
     document.getElementById('audioScript').innerHTML = '';
     stopAudio();
 
-    fetch(`/notebook/${BOOK_ID}/audio-chapter/${chapterIdx}`)
-        .then(r => r.json())
-        .then(data => {
-            document.getElementById('audioLoading').style.display = 'none';
-            if (data.error) {
-                document.getElementById('audioScript').innerHTML = `<p style="color:#e53935;">${data.error}</p>`;
-                return;
-            }
-            document.getElementById('audioTopicTitle').textContent = data.title;
-            document.getElementById('audioDuration').textContent = `~${data.duration_estimate}`;
-            audioScriptText = data.script;
+    function poll() {
+        fetch(`/notebook/${BOOK_ID}/audio-chapter/${chapterIdx}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'generating') {
+                    document.getElementById('audioLoading').querySelector('span').textContent =
+                        'Generating chapter audio… (may take 30-60 seconds)';
+                    setTimeout(poll, 4000);
+                    return;
+                }
+                document.getElementById('audioLoading').style.display = 'none';
+                if (data.error) {
+                    document.getElementById('audioScript').innerHTML = `<p style="color:#e53935;">${data.error}</p>`;
+                    return;
+                }
+                renderChapterAudioData(data);
+            })
+            .catch(err => {
+                document.getElementById('audioLoading').style.display = 'none';
+                document.getElementById('audioScript').innerHTML = `<p style="color:#e53935;">Error: ${err}</p>`;
+            });
+    }
+    poll();
+}
 
-            renderScriptWithSentences(data.script);
-
-            if (data.audio_url) {
-                usingBrowserTTS = false;
-                initAudioElement(data.audio_url);
-            } else {
-                usingBrowserTTS = true;
-                audioEl = null;
-            }
-            updateTTSBadge();
-            document.getElementById('audioPlayBtn').style.display = '';
-
-            document.getElementById('audioProgress').style.width = '0%';
-            document.getElementById('audioCurrentTime').textContent = '0:00';
-        })
-        .catch(err => {
-            document.getElementById('audioLoading').style.display = 'none';
-            document.getElementById('audioScript').innerHTML = `<p style="color:#e53935;">Error: ${err}</p>`;
-        });
+function renderChapterAudioData(data) {
+    document.getElementById('audioTopicTitle').textContent = data.title;
+    document.getElementById('audioDuration').textContent = `~${data.duration_estimate}`;
+    audioScriptText = data.script;
+    renderScriptWithSentences(data.script);
+    if (data.audio_url) {
+        usingBrowserTTS = false;
+        initAudioElement(data.audio_url);
+    } else {
+        usingBrowserTTS = true;
+        audioEl = null;
+    }
+    updateTTSBadge();
+    document.getElementById('audioPlayBtn').style.display = '';
+    document.getElementById('audioProgress').style.width = '0%';
+    document.getElementById('audioCurrentTime').textContent = '0:00';
 }
 
 function stopAudio() {
@@ -1170,20 +1189,29 @@ function loadMindmap(chapterIdx, btn) {
     document.getElementById('mindmapLoading').style.display = 'flex';
     document.getElementById('mindmapImageContainer').innerHTML = '';
 
-    fetch(`/notebook/${BOOK_ID}/mindmap/${chapterIdx}`)
-        .then(r => r.json())
-        .then(data => {
-            document.getElementById('mindmapLoading').style.display = 'none';
-            if (data.error) {
-                document.getElementById('mindmapImageContainer').innerHTML = `<p style="color:#e53935;padding:24px;">${data.error}</p>`;
-                return;
-            }
-            renderMindmap(data);
-        })
-        .catch(err => {
-            document.getElementById('mindmapLoading').style.display = 'none';
-            document.getElementById('mindmapImageContainer').innerHTML = `<p style="color:#e53935;padding:24px;">Error: ${err}</p>`;
-        });
+    function poll() {
+        fetch(`/notebook/${BOOK_ID}/mindmap/${chapterIdx}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'generating') {
+                    document.getElementById('mindmapLoading').querySelector('span').textContent =
+                        'Generating AI mind map… (may take 30-60 seconds)';
+                    setTimeout(poll, 4000);
+                    return;
+                }
+                document.getElementById('mindmapLoading').style.display = 'none';
+                if (data.error) {
+                    document.getElementById('mindmapImageContainer').innerHTML = `<p style="color:#e53935;padding:24px;">${data.error}</p>`;
+                    return;
+                }
+                renderMindmap(data);
+            })
+            .catch(err => {
+                document.getElementById('mindmapLoading').style.display = 'none';
+                document.getElementById('mindmapImageContainer').innerHTML = `<p style="color:#e53935;padding:24px;">Error: ${err}</p>`;
+            });
+    }
+    poll();
 }
 
 function renderMindmap(data) {
@@ -1317,20 +1345,29 @@ function loadInfog(chapterIdx, btn) {
     document.getElementById('infogLoading').style.display = 'flex';
     document.getElementById('infogContainer').innerHTML = '';
 
-    fetch(`/notebook/${BOOK_ID}/infographic/${chapterIdx}`)
-        .then(r => r.json())
-        .then(data => {
-            document.getElementById('infogLoading').style.display = 'none';
-            if (data.error) {
-                document.getElementById('infogContainer').innerHTML = `<p style="color:#e53935;padding:24px;">${data.error}</p>`;
-                return;
-            }
-            renderInfog(data);
-        })
-        .catch(err => {
-            document.getElementById('infogLoading').style.display = 'none';
-            document.getElementById('infogContainer').innerHTML = `<p style="color:#e53935;padding:24px;">Error: ${err}</p>`;
-        });
+    function poll() {
+        fetch(`/notebook/${BOOK_ID}/infographic/${chapterIdx}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'generating') {
+                    document.getElementById('infogLoading').querySelector('span').textContent =
+                        'Generating AI infographic… (may take 30-60 seconds)';
+                    setTimeout(poll, 4000);
+                    return;
+                }
+                document.getElementById('infogLoading').style.display = 'none';
+                if (data.error) {
+                    document.getElementById('infogContainer').innerHTML = `<p style="color:#e53935;padding:24px;">${data.error}</p>`;
+                    return;
+                }
+                renderInfog(data);
+            })
+            .catch(err => {
+                document.getElementById('infogLoading').style.display = 'none';
+                document.getElementById('infogContainer').innerHTML = `<p style="color:#e53935;padding:24px;">Error: ${err}</p>`;
+            });
+    }
+    poll();
 }
 
 function renderInfog(data) {
@@ -1461,23 +1498,32 @@ function loadFlashcards(chapterIdx, topicIdx, btn) {
     document.getElementById('cardsArea').style.display = 'none';
     document.getElementById('cardsLoading').style.display = 'flex';
 
-    fetch(`/notebook/${BOOK_ID}/flashcards/${chapterIdx}/${topicIdx}`)
-        .then(r => r.json())
-        .then(data => {
-            document.getElementById('cardsLoading').style.display = 'none';
-            if (data.error) {
+    function poll() {
+        fetch(`/notebook/${BOOK_ID}/flashcards/${chapterIdx}/${topicIdx}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'generating') {
+                    document.getElementById('cardsLoading').querySelector('span').textContent =
+                        'Generating flash cards… (may take 30-60 seconds)';
+                    setTimeout(poll, 4000);
+                    return;
+                }
+                document.getElementById('cardsLoading').style.display = 'none';
+                if (data.error) {
+                    document.getElementById('cardsArea').style.display = '';
+                    document.getElementById('cardPointText').textContent = data.error;
+                    return;
+                }
+                currentCards = data.cards || [];
+                currentCardIdx = 0;
                 document.getElementById('cardsArea').style.display = '';
-                document.getElementById('cardPointText').textContent = data.error;
-                return;
-            }
-            currentCards = data.cards || [];
-            currentCardIdx = 0;
-            document.getElementById('cardsArea').style.display = '';
-            showCard(0);
-        })
-        .catch(err => {
-            document.getElementById('cardsLoading').style.display = 'none';
-        });
+                showCard(0);
+            })
+            .catch(err => {
+                document.getElementById('cardsLoading').style.display = 'none';
+            });
+    }
+    poll();
 }
 
 function showCard(idx) {
@@ -1513,24 +1559,33 @@ function loadSuperCards(btn) {
     document.getElementById('cardsArea').style.display = 'none';
     document.getElementById('cardsLoading').style.display = 'flex';
 
-    fetch(`/notebook/${BOOK_ID}/flashcards/super`)
-        .then(r => r.json())
-        .then(data => {
-            document.getElementById('cardsLoading').style.display = 'none';
-            if (data.error) {
+    function poll() {
+        fetch(`/notebook/${BOOK_ID}/flashcards/super`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'generating') {
+                    document.getElementById('cardsLoading').querySelector('span').textContent =
+                        'Generating super flash cards… (may take 30-60 seconds)';
+                    setTimeout(poll, 4000);
+                    return;
+                }
+                document.getElementById('cardsLoading').style.display = 'none';
+                if (data.error) {
+                    document.getElementById('cardsArea').style.display = '';
+                    document.getElementById('cardPointText').textContent = data.error;
+                    return;
+                }
+                currentCards = data.cards || [];
+                currentCardIdx = 0;
                 document.getElementById('cardsArea').style.display = '';
-                document.getElementById('cardPointText').textContent = data.error;
-                return;
-            }
-            currentCards = data.cards || [];
-            currentCardIdx = 0;
-            document.getElementById('cardsArea').style.display = '';
-            showCard(0);
-        })
-        .catch(err => {
-            document.getElementById('cardsLoading').style.display = 'none';
-            alert('Error loading super cards: ' + err);
-        });
+                showCard(0);
+            })
+            .catch(err => {
+                document.getElementById('cardsLoading').style.display = 'none';
+                alert('Error loading super cards: ' + err);
+            });
+    }
+    poll();
 }
 function restartCards() { showCard(0); }
 
@@ -1561,23 +1616,30 @@ function loadCheatSheet() {
     document.getElementById('csContent').style.display = 'none';
     document.getElementById('csNav').style.display = 'none';
 
-    fetch(`/notebook/${BOOK_ID}/cheatsheet`)
-        .then(r => r.json())
-        .then(data => {
-            document.getElementById('csLoading').style.display = 'none';
-            if (data.error) {
+    function poll() {
+        fetch(`/notebook/${BOOK_ID}/cheatsheet`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'generating') {
+                    setTimeout(poll, 5000);
+                    return;
+                }
+                document.getElementById('csLoading').style.display = 'none';
+                if (data.error) {
+                    document.getElementById('csGenerateBtn').style.display = '';
+                    alert('Error: ' + data.error);
+                    return;
+                }
+                csLoaded = true;
+                renderCheatSheet(data);
+            })
+            .catch(err => {
+                document.getElementById('csLoading').style.display = 'none';
                 document.getElementById('csGenerateBtn').style.display = '';
-                alert('Error: ' + data.error);
-                return;
-            }
-            csLoaded = true;
-            renderCheatSheet(data);
-        })
-        .catch(err => {
-            document.getElementById('csLoading').style.display = 'none';
-            document.getElementById('csGenerateBtn').style.display = '';
-            alert('Error loading cheat sheet: ' + err);
-        });
+                alert('Error loading cheat sheet: ' + err);
+            });
+    }
+    poll();
 }
 
 function renderCheatSheet(data) {
@@ -1681,45 +1743,54 @@ function startMultiQuiz() {
     document.getElementById('quizArea').style.display = 'none';
     document.getElementById('quizResults').style.display = 'none';
 
-    // Fetch all selected difficulties in parallel and merge
-    Promise.all(selected.map(d =>
-        fetch(`/notebook/${BOOK_ID}/quiz/${quizSelectedChapter}/${d}`).then(r => r.json())
-    ))
-    .then(results => {
-        document.getElementById('quizLoading').style.display = 'none';
-        const errResult = results.find(r => r.error);
-        if (errResult) {
+    // Fetch all selected difficulties; if any is still generating, poll until ready
+    function pollQuiz() {
+        Promise.all(selected.map(d =>
+            fetch(`/notebook/${BOOK_ID}/quiz/${quizSelectedChapter}/${d}`).then(r => r.json())
+        ))
+        .then(results => {
+            // If any result is still generating, poll again
+            if (results.some(r => r.status === 'generating')) {
+                document.getElementById('quizLoading').querySelector('span').textContent =
+                    'Generating quiz questions… (may take 30-60 seconds)';
+                setTimeout(pollQuiz, 4000);
+                return;
+            }
+            document.getElementById('quizLoading').style.display = 'none';
+            const errResult = results.find(r => r.error);
+            if (errResult) {
+                document.getElementById('quizDifficulty').style.display = '';
+                alert('Error: ' + errResult.error);
+                return;
+            }
+            // Take equal share from each difficulty, total = 10
+            const TOTAL = 10;
+            const perDiff = Math.floor(TOTAL / results.length);
+            let allQuestions = [];
+            results.forEach((r, i) => {
+                const qs = r.questions || [];
+                const take = (i === results.length - 1) ? TOTAL - allQuestions.length : perDiff;
+                allQuestions = allQuestions.concat(qs.slice(0, take));
+            });
+            // Shuffle
+            for (let i = allQuestions.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [allQuestions[i], allQuestions[j]] = [allQuestions[j], allQuestions[i]];
+            }
+            quizQuestions = allQuestions;
+            quizAnswers = new Array(quizQuestions.length).fill(-1);
+            quizCurrentIdx = 0;
+            renderQuizDots();
+            showQuizQuestion(0);
+            document.getElementById('quizArea').style.display = '';
+        })
+        .catch(err => {
+            document.getElementById('quizLoading').style.display = 'none';
             document.getElementById('quizDifficulty').style.display = '';
-            alert('Error: ' + errResult.error);
-            return;
-        }
-        // Take equal share from each difficulty, total = 10
-        const TOTAL = 10;
-        const perDiff = Math.floor(TOTAL / results.length);
-        let allQuestions = [];
-        results.forEach((r, i) => {
-            const qs = r.questions || [];
-            // Last bucket gets any remainder to hit exactly 10
-            const take = (i === results.length - 1) ? TOTAL - allQuestions.length : perDiff;
-            allQuestions = allQuestions.concat(qs.slice(0, take));
+            alert('Error loading quiz: ' + err);
         });
-        // Shuffle
-        for (let i = allQuestions.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [allQuestions[i], allQuestions[j]] = [allQuestions[j], allQuestions[i]];
-        }
-        quizQuestions = allQuestions;
-        quizAnswers = new Array(quizQuestions.length).fill(-1);
-        quizCurrentIdx = 0;
-        renderQuizDots();
-        showQuizQuestion(0);
-        document.getElementById('quizArea').style.display = '';
-    })
-    .catch(err => {
-        document.getElementById('quizLoading').style.display = 'none';
-        document.getElementById('quizDifficulty').style.display = '';
-        alert('Error loading quiz: ' + err);
-    });
+    }
+    pollQuiz();
 }
 
 function renderQuizDots() {

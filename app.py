@@ -62,6 +62,38 @@ from pyq.data_loader import get_master_data, get_classify_status, PYQ_TOPICS, YE
 from pyq.explainer import get_explanation as pyq_get_explanation
 
 # ═══════════════════════════════════════════════════════════════════════════
+# BACKGROUND ITEM GENERATION — generate single items async per chapter click
+# ═══════════════════════════════════════════════════════════════════════════
+
+_item_gen_lock = threading.Lock()
+_item_generating: set[str] = set()        # keys like "mm:bookid:3"
+_item_gen_errors: dict[str, str] = {}     # transient last-error per key
+
+
+def _gen_item_bg(gen_func, gen_key, *args, **kwargs):
+    """Run *gen_func* in a background thread and clear the generating flag."""
+    try:
+        gen_func(*args, **kwargs)
+    except Exception as exc:
+        _item_gen_errors[gen_key] = str(exc)
+    finally:
+        with _item_gen_lock:
+            _item_generating.discard(gen_key)
+
+
+def _start_item_gen(gen_key, gen_func, *args, **kwargs):
+    """Start background generation if not already running. Returns status str."""
+    with _item_gen_lock:
+        if gen_key in _item_generating:
+            return "generating"
+        _item_generating.add(gen_key)
+        _item_gen_errors.pop(gen_key, None)
+    t = threading.Thread(target=_gen_item_bg, args=(gen_func, gen_key, *args), kwargs=kwargs, daemon=True)
+    t.start()
+    return "generating"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # APP SETUP
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -857,17 +889,21 @@ def notebook_structure(book_id):
 
 @app.route("/notebook/<book_id>/audio/<int:chapter_idx>/<int:topic_idx>")
 def notebook_audio(book_id, chapter_idx, topic_idx):
-    """Generate or return cached audio script for a topic."""
+    """Return cached audio script or start background generation."""
     book = get_book(book_id)
     if not book:
         return jsonify({"error": "Book not found"}), 404
 
-    # Check cache
     cached = get_cached_script(book_id, chapter_idx, topic_idx)
     if cached:
         return jsonify(cached)
 
-    # Get topic info from structure
+    gen_key = f"au:{book_id}:{chapter_idx}:{topic_idx}"
+
+    if gen_key in _item_gen_errors:
+        err = _item_gen_errors.pop(gen_key)
+        return jsonify({"error": err}), 500
+
     structure = get_book_structure(book_id)
     if not structure or chapter_idx >= len(structure.get("chapters", [])):
         return jsonify({"error": "Chapter not found"}), 404
@@ -878,20 +914,18 @@ def notebook_audio(book_id, chapter_idx, topic_idx):
         return jsonify({"error": "Topic not found"}), 404
 
     topic = topics[topic_idx]
-    try:
-        result = generate_audio_script(
-            book_id, chapter_idx, topic_idx,
-            topic["topic_title"], chapter["chapter_title"],
-            book.get("title", ""),
-        )
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    _start_item_gen(
+        gen_key, generate_audio_script,
+        book_id, chapter_idx, topic_idx,
+        topic["topic_title"], chapter["chapter_title"],
+        book.get("title", ""),
+    )
+    return jsonify({"status": "generating", "message": "Generating audio script…"})
 
 
 @app.route("/notebook/<book_id>/audio-chapter/<int:chapter_idx>")
 def notebook_audio_chapter(book_id, chapter_idx):
-    """Generate or return cached audio script for an entire chapter."""
+    """Return cached chapter audio script or start background generation."""
     from books.book_audio import get_cached_chapter_script, generate_chapter_audio_script
 
     book = get_book(book_id)
@@ -902,20 +936,24 @@ def notebook_audio_chapter(book_id, chapter_idx):
     if cached:
         return jsonify(cached)
 
+    gen_key = f"auc:{book_id}:{chapter_idx}"
+
+    if gen_key in _item_gen_errors:
+        err = _item_gen_errors.pop(gen_key)
+        return jsonify({"error": err}), 500
+
     structure = get_book_structure(book_id)
     if not structure or chapter_idx >= len(structure.get("chapters", [])):
         return jsonify({"error": "Chapter not found"}), 404
 
     chapter = structure["chapters"][chapter_idx]
-    try:
-        result = generate_chapter_audio_script(
-            book_id, chapter_idx,
-            chapter["chapter_title"], chapter.get("topics", []),
-            book.get("title", ""),
-        )
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    _start_item_gen(
+        gen_key, generate_chapter_audio_script,
+        book_id, chapter_idx,
+        chapter["chapter_title"], chapter.get("topics", []),
+        book.get("title", ""),
+    )
+    return jsonify({"status": "generating", "message": "Generating chapter audio…"})
 
 
 @app.route("/notebook/<book_id>/audio-file/<path:filename>")
@@ -929,7 +967,7 @@ def notebook_audio_file(book_id, filename):
 
 @app.route("/notebook/<book_id>/mindmap/<int:chapter_idx>")
 def notebook_mindmap(book_id, chapter_idx):
-    """Generate or return cached mind map for a chapter."""
+    """Return cached mind map or start background generation."""
     book = get_book(book_id)
     if not book:
         return jsonify({"error": "Book not found"}), 404
@@ -938,30 +976,33 @@ def notebook_mindmap(book_id, chapter_idx):
     if cached:
         return jsonify(cached)
 
+    gen_key = f"mm:{book_id}:{chapter_idx}"
+
+    # Check for previous error
+    if gen_key in _item_gen_errors:
+        err = _item_gen_errors.pop(gen_key)
+        return jsonify({"error": err}), 500
+
     structure = get_book_structure(book_id)
     if not structure or chapter_idx >= len(structure.get("chapters", [])):
         return jsonify({"error": "Chapter not found"}), 404
 
     chapter = structure["chapters"][chapter_idx]
-
-    # Get PDF bytes from GridFS for chapter text extraction
     pdf_bytes = get_pdf_bytes(book_id)
 
-    try:
-        result = generate_mindmap(
-            book_id, chapter_idx,
-            chapter["chapter_title"], chapter.get("topics", []),
-            book_title=book.get("title", ""),
-            pdf_bytes=pdf_bytes,
-        )
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    _start_item_gen(
+        gen_key, generate_mindmap,
+        book_id, chapter_idx,
+        chapter["chapter_title"], chapter.get("topics", []),
+        book_title=book.get("title", ""),
+        pdf_bytes=pdf_bytes,
+    )
+    return jsonify({"status": "generating", "message": "Generating mind map…"})
 
 
 @app.route("/notebook/<book_id>/infographic/<int:chapter_idx>")
 def notebook_infographic(book_id, chapter_idx):
-    """Generate or return cached infographic for a chapter."""
+    """Return cached infographic or start background generation."""
     book = get_book(book_id)
     if not book:
         return jsonify({"error": "Book not found"}), 404
@@ -970,29 +1011,31 @@ def notebook_infographic(book_id, chapter_idx):
     if cached:
         return jsonify(cached)
 
+    gen_key = f"ig:{book_id}:{chapter_idx}"
+
+    if gen_key in _item_gen_errors:
+        err = _item_gen_errors.pop(gen_key)
+        return jsonify({"error": err}), 500
+
     structure = get_book_structure(book_id)
     if not structure or chapter_idx >= len(structure.get("chapters", [])):
         return jsonify({"error": "Chapter not found"}), 404
 
     chapter = structure["chapters"][chapter_idx]
-
-    # Get PDF bytes from GridFS for chapter text extraction
     pdf_bytes = get_pdf_bytes(book_id)
 
-    try:
-        result = generate_infographic(
-            book_id, chapter_idx,
-            chapter["chapter_title"], chapter.get("topics", []),
-            pdf_bytes=pdf_bytes,
-        )
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    _start_item_gen(
+        gen_key, generate_infographic,
+        book_id, chapter_idx,
+        chapter["chapter_title"], chapter.get("topics", []),
+        pdf_bytes=pdf_bytes,
+    )
+    return jsonify({"status": "generating", "message": "Generating infographic…"})
 
 
 @app.route("/notebook/<book_id>/flashcards/super")
 def notebook_super_flashcards(book_id):
-    """Generate or return cached super last-min revision cards for entire book."""
+    """Return cached super last-min revision cards or start background generation."""
     book = get_book(book_id)
     if not book:
         return jsonify({"error": "Book not found"}), 404
@@ -1001,20 +1044,23 @@ def notebook_super_flashcards(book_id):
     if cached:
         return jsonify({"cards": cached})
 
+    gen_key = f"sfc:{book_id}"
+
+    if gen_key in _item_gen_errors:
+        err = _item_gen_errors.pop(gen_key)
+        return jsonify({"error": err}), 500
+
     structure = get_book_structure(book_id)
     if not structure:
         return jsonify({"error": "Book structure not found"}), 404
 
-    try:
-        cards = generate_super_cards(book_id, structure)
-        return jsonify({"cards": cards})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    _start_item_gen(gen_key, generate_super_cards, book_id, structure)
+    return jsonify({"status": "generating", "message": "Generating super flash cards…"})
 
 
 @app.route("/notebook/<book_id>/flashcards/<int:chapter_idx>/<int:topic_idx>")
 def notebook_flashcards(book_id, chapter_idx, topic_idx):
-    """Generate or return cached flash cards for a topic."""
+    """Return cached flash cards or start background generation."""
     book = get_book(book_id)
     if not book:
         return jsonify({"error": "Book not found"}), 404
@@ -1022,6 +1068,12 @@ def notebook_flashcards(book_id, chapter_idx, topic_idx):
     cached = get_cached_cards(book_id, chapter_idx, topic_idx)
     if cached:
         return jsonify({"cards": cached})
+
+    gen_key = f"fc:{book_id}:{chapter_idx}:{topic_idx}"
+
+    if gen_key in _item_gen_errors:
+        err = _item_gen_errors.pop(gen_key)
+        return jsonify({"error": err}), 500
 
     structure = get_book_structure(book_id)
     if not structure or chapter_idx >= len(structure.get("chapters", [])):
@@ -1033,19 +1085,17 @@ def notebook_flashcards(book_id, chapter_idx, topic_idx):
         return jsonify({"error": "Topic not found"}), 404
 
     topic = topics[topic_idx]
-    try:
-        cards = generate_flashcards(
-            book_id, chapter_idx, topic_idx,
-            topic["topic_title"], chapter["chapter_title"],
-        )
-        return jsonify({"cards": cards})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    _start_item_gen(
+        gen_key, generate_flashcards,
+        book_id, chapter_idx, topic_idx,
+        topic["topic_title"], chapter["chapter_title"],
+    )
+    return jsonify({"status": "generating", "message": "Generating flash cards…"})
 
 
 @app.route("/notebook/<book_id>/quiz/<int:chapter_idx>/<difficulty>")
 def notebook_quiz(book_id, chapter_idx, difficulty):
-    """Generate or return cached quiz for a chapter at given difficulty."""
+    """Return cached quiz or start background generation."""
     if difficulty not in ("easy", "medium", "hard"):
         return jsonify({"error": "Invalid difficulty"}), 400
 
@@ -1057,25 +1107,29 @@ def notebook_quiz(book_id, chapter_idx, difficulty):
     if cached:
         return jsonify({"questions": cached})
 
+    gen_key = f"qz:{book_id}:{chapter_idx}:{difficulty}"
+
+    if gen_key in _item_gen_errors:
+        err = _item_gen_errors.pop(gen_key)
+        return jsonify({"error": err}), 500
+
     structure = get_book_structure(book_id)
     if not structure or chapter_idx >= len(structure.get("chapters", [])):
         return jsonify({"error": "Chapter not found"}), 404
 
     chapter = structure["chapters"][chapter_idx]
-    try:
-        questions = generate_quiz(
-            book_id, chapter_idx,
-            chapter["chapter_title"], chapter.get("topics", []),
-            difficulty=difficulty,
-        )
-        return jsonify({"questions": questions})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    _start_item_gen(
+        gen_key, generate_quiz,
+        book_id, chapter_idx,
+        chapter["chapter_title"], chapter.get("topics", []),
+        difficulty=difficulty,
+    )
+    return jsonify({"status": "generating", "message": f"Generating {difficulty} quiz…"})
 
 
 @app.route("/notebook/<book_id>/cheatsheet")
 def notebook_cheatsheet(book_id):
-    """Generate or return cached whole-book cheat sheet."""
+    """Return cached whole-book cheat sheet or start background generation."""
     book = get_book(book_id)
     if not book:
         return jsonify({"error": "Book not found"}), 404
@@ -1084,15 +1138,18 @@ def notebook_cheatsheet(book_id):
     if cached:
         return jsonify(cached)
 
+    gen_key = f"cs:{book_id}"
+
+    if gen_key in _item_gen_errors:
+        err = _item_gen_errors.pop(gen_key)
+        return jsonify({"error": err}), 500
+
     structure = get_book_structure(book_id)
     if not structure:
         return jsonify({"error": "Book structure not found"}), 404
 
-    try:
-        result = generate_cheatsheet(book_id, structure)
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    _start_item_gen(gen_key, generate_cheatsheet, book_id, structure)
+    return jsonify({"status": "generating", "message": "Generating cheat sheet…"})
 
 
 # ═══════════════════════════════════════════════════════════════════════════
