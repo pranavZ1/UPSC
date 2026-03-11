@@ -117,6 +117,47 @@ Then describe:
 IMPORTANT: Replace ALL bracketed placeholders with REAL content from the chapter."""
 
 
+# ── Image extraction & validation ─────────────────────────────────────────────
+
+_MIN_IMAGE_BYTES = 5000  # Real images are 100KB+; reject anything < 5KB
+
+
+def _extract_valid_image(result) -> bytes | None:
+    """Extract image bytes from a Gemini response, validating format & size."""
+    for candidate in (result.candidates or []):
+        if not (candidate.content and candidate.content.parts):
+            continue
+        for part in candidate.content.parts:
+            if not (hasattr(part, "inline_data") and part.inline_data):
+                continue
+            raw = part.inline_data.data
+
+            if isinstance(raw, str):
+                try:
+                    img = base64.b64decode(raw)
+                except Exception:
+                    continue
+            elif isinstance(raw, bytes):
+                if raw[:2] == b'\xff\xd8' or raw[:4] == b'\x89PNG':
+                    img = raw
+                else:
+                    try:
+                        img = base64.b64decode(raw)
+                    except Exception:
+                        img = raw
+            else:
+                continue
+
+            if img[:2] != b'\xff\xd8' and img[:4] != b'\x89PNG':
+                print(f"⚠️  Invalid image header: {img[:4]!r}")
+                continue
+            if len(img) < _MIN_IMAGE_BYTES:
+                print(f"⚠️  Image too small ({len(img)} bytes)")
+                continue
+            return img
+    return None
+
+
 def generate_infographic(
     book_id: str, chapter_idx: int, chapter_title: str,
     topics: list[dict], pdf_bytes: bytes | None = None,
@@ -169,31 +210,19 @@ def generate_infographic(
     image_prompt = response.text.strip()
     print(f"🎨 Generated image prompt ({len(image_prompt)} chars)")
 
-    print("🖼️  Generating image with nano-banana-pro-preview…")
-    result = client.models.generate_content(
-        model="nano-banana-pro-preview", contents=image_prompt,
-    )
-
     img_bytes = None
-    if result.candidates:
-        for candidate in result.candidates:
-            if candidate.content and candidate.content.parts:
-                for part in candidate.content.parts:
-                    if hasattr(part, "inline_data") and part.inline_data:
-                        raw = part.inline_data.data
-                        if isinstance(raw, bytes) and raw[:4] != b"\x89PNG":
-                            try:
-                                img_bytes = base64.b64decode(raw)
-                            except Exception:
-                                img_bytes = raw
-                        else:
-                            img_bytes = raw
-                        break
-            if img_bytes:
-                break
+    for attempt in range(3):
+        print(f"🖼️  Generating infographic image (attempt {attempt + 1}/3)…")
+        result = client.models.generate_content(
+            model="nano-banana-pro-preview", contents=image_prompt,
+        )
+        img_bytes = _extract_valid_image(result)
+        if img_bytes:
+            break
+        print(f"⚠️  Attempt {attempt + 1}: invalid/tiny image, retrying…")
 
     if not img_bytes:
-        return {"error": "Image generation failed. Please try again."}
+        return {"error": "Infographic generation failed after 3 attempts."}
 
     # Store in MongoDB
     infographics_col().replace_one(
