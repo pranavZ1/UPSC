@@ -2,12 +2,15 @@
 #
 # Uses Gemini's multimodal capability instead of Tesseract OCR.
 # Much more accurate for photos of printed/handwritten UPSC content.
+#
+# Uses the Gemini **File API** (upload → reference) instead of inline
+# base64.  This is more reliable for non-standard JPEG encodings
+# (e.g. WhatsApp images) that trigger INVALID_ARGUMENT with inline_data.
 
-import base64
 from pathlib import Path
 from google import genai
 from dotenv import load_dotenv
-import os
+import os, time
 
 load_dotenv()
 
@@ -23,38 +26,28 @@ _PROMPT = """Extract ALL text from this image.
 
 
 def extract_text_from_image(path: str) -> str:
-    """Extract text from an image file using Gemini Vision."""
+    """Extract text from an image file using Gemini Vision (File API)."""
     img_path = Path(path)
-    img_bytes = img_path.read_bytes()
-    img_b64 = base64.standard_b64encode(img_bytes).decode("utf-8")
 
-    # Detect MIME type
-    ext = img_path.suffix.lower()
-    mime_map = {
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".png": "image/png",
-        ".webp": "image/webp",
-        ".tiff": "image/tiff",
-        ".bmp": "image/bmp",
-        ".gif": "image/gif",
-    }
-    mime = mime_map.get(ext, "image/jpeg")
+    # Upload via Gemini File API — handles encoding/metadata automatically
+    uploaded = _client.files.upload(file=str(img_path))
 
-    response = _client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[
-            {
-                "parts": [
-                    {"text": _PROMPT},
-                    {
-                        "inline_data": {
-                            "mime_type": mime,
-                            "data": img_b64,
-                        }
-                    },
-                ]
-            }
-        ],
-    )
-    return response.text.strip()
+    # Wait for ACTIVE state (usually instant, but just in case)
+    for _ in range(10):
+        if uploaded.state.name == "ACTIVE":
+            break
+        time.sleep(1)
+        uploaded = _client.files.get(name=uploaded.name)
+
+    try:
+        response = _client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[_PROMPT, uploaded],
+        )
+        return response.text.strip()
+    finally:
+        # Clean up uploaded file
+        try:
+            _client.files.delete(name=uploaded.name)
+        except Exception:
+            pass

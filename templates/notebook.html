@@ -12,9 +12,6 @@
         <p class="nb-subtitle">{{ book.title }}</p>
     </div>
     <div style="display:flex;gap:8px;align-items:center;">
-        <button class="btn btn-sm btn-accent" id="generateAllBtn" style="display:none;" onclick="triggerGenerateAll()">
-            <span class="material-symbols-rounded" style="font-size:16px;">auto_awesome</span> Generate All Assets
-        </button>
         <a href="{{ url_for('book_viewer', book_id=book.id) }}" class="btn btn-sm btn-primary">
             <span class="material-symbols-rounded" style="font-size:16px;">auto_stories</span> Read Book
         </a>
@@ -75,6 +72,10 @@
         <!-- Chapter/Topic Sidebar -->
         <div class="nb-sidebar">
             <h3 class="nb-sidebar-title">Chapters</h3>
+            <button class="btn btn-sm btn-accent section-gen-btn" id="genAllAudio" onclick="generateSection('audio')" style="display:none;margin:0 12px 10px;width:calc(100% - 24px);">
+                <span class="material-symbols-rounded" style="font-size:16px;">auto_awesome</span>
+                <span class="section-gen-label">Generate All Audio</span>
+            </button>
             <div class="nb-chapter-list" id="audioChapterList">
                 {% if structure %}
                 {% for ch in structure.chapters %}
@@ -150,6 +151,10 @@
     <div class="nb-two-col">
         <div class="nb-sidebar">
             <h3 class="nb-sidebar-title">Chapters</h3>
+            <button class="btn btn-sm btn-accent section-gen-btn" id="genAllMindmaps" onclick="generateSection('mindmaps')" style="display:none;margin:0 12px 10px;width:calc(100% - 24px);">
+                <span class="material-symbols-rounded" style="font-size:16px;">auto_awesome</span>
+                <span class="section-gen-label">Generate All Mind Maps</span>
+            </button>
             <div class="nb-chapter-list" id="mindmapChapterList">
                 {% if structure %}
                 {% for ch in structure.chapters %}
@@ -181,6 +186,10 @@
     <div class="nb-two-col">
         <div class="nb-sidebar">
             <h3 class="nb-sidebar-title">Chapters</h3>
+            <button class="btn btn-sm btn-accent section-gen-btn" id="genAllInfographics" onclick="generateSection('infographics')" style="display:none;margin:0 12px 10px;width:calc(100% - 24px);">
+                <span class="material-symbols-rounded" style="font-size:16px;">auto_awesome</span>
+                <span class="section-gen-label">Generate All Infographics</span>
+            </button>
             <div class="nb-chapter-list" id="infogChapterList">
                 {% if structure %}
                 {% for ch in structure.chapters %}
@@ -212,6 +221,10 @@
     <div class="nb-two-col">
         <div class="nb-sidebar">
             <h3 class="nb-sidebar-title">Chapters</h3>
+            <button class="btn btn-sm btn-accent section-gen-btn" id="genAllFlashcards" onclick="generateSection('flashcards')" style="display:none;margin:0 12px 10px;width:calc(100% - 24px);">
+                <span class="material-symbols-rounded" style="font-size:16px;">auto_awesome</span>
+                <span class="section-gen-label">Generate All Flash Cards</span>
+            </button>
             <div class="nb-chapter-list" id="cardsChapterList">
                 <!-- Super Last Min Prep -->
                 <button class="super-lastmin-btn" id="superLastMinBtn" onclick="loadSuperCards(this)">
@@ -295,6 +308,10 @@
     <div class="nb-two-col">
         <div class="nb-sidebar">
             <h3 class="nb-sidebar-title">Chapters</h3>
+            <button class="btn btn-sm btn-accent section-gen-btn" id="genAllQuiz" onclick="generateSection('quiz')" style="display:none;margin:0 12px 10px;width:calc(100% - 24px);">
+                <span class="material-symbols-rounded" style="font-size:16px;">auto_awesome</span>
+                <span class="section-gen-label">Generate All Quizzes</span>
+            </button>
             <div class="nb-chapter-list" id="quizChapterList">
                 {% if structure %}
                 {% for ch in structure.chapters %}
@@ -417,7 +434,7 @@ const BOOK_ID = "{{ book.id }}";
 let currentCards = [];
 let currentCardIdx = 0;
 
-// ── Pipeline progress polling ────────────────────
+// ── Pipeline progress polling (light pipeline: upload → index → structure) ──
 const PHASE_LABELS = {
     upload: 'Upload', indexing: 'Indexing', structure: 'Structure',
     mindmaps: 'Mind Maps', infographics: 'Infographics', audio: 'Audio',
@@ -429,7 +446,24 @@ const PHASE_ICONS = {
     flashcards: 'style', quiz: 'quiz', cheatsheet: 'description',
 };
 
+// Map section names to their "Generate All" button IDs
+const SECTION_BTN_MAP = {
+    mindmaps:     'genAllMindmaps',
+    infographics: 'genAllInfographics',
+    audio:        'genAllAudio',
+    flashcards:   'genAllFlashcards',
+    quiz:         'genAllQuiz',
+};
+const SECTION_LABELS = {
+    mindmaps: 'Generate All Mind Maps',
+    infographics: 'Generate All Infographics',
+    audio: 'Generate All Audio',
+    flashcards: 'Generate All Flash Cards',
+    quiz: 'Generate All Quizzes',
+};
+
 let pipelineInterval = null;
+let sectionPollInterval = null;
 
 function pollPipeline() {
     fetch(`/books/${BOOK_ID}/pipeline-status`)
@@ -438,25 +472,28 @@ function pollPipeline() {
         if (data.error) return;
         const banner = document.getElementById('pipelineBanner');
         const status = data.status;
+        const curPhase = data.phase || '';
 
-        if (status === 'pending' || status === 'running') {
+        // Only show banner for the light pipeline phases or active section gen
+        const lightPhases = ['upload', 'indexing', 'structure'];
+        const isLightPhase = lightPhases.includes(curPhase);
+        const isSectionGen = !isLightPhase && status === 'running';
+
+        if (status === 'pending' || (status === 'running' && isLightPhase)) {
             banner.style.display = '';
-            document.getElementById('generateAllBtn').style.display = 'none';
             document.getElementById('pipelineTitle').textContent =
-                status === 'pending' ? 'Pipeline Queued…' : 'Generating Assets…';
+                status === 'pending' ? 'Preparing Book…' : 'Indexing & Structuring…';
             document.getElementById('pipelineTask').textContent = data.current_task || 'Starting…';
             document.getElementById('pipelineIcon').textContent =
                 status === 'pending' ? 'hourglass_top' : 'rocket_launch';
             document.getElementById('pipelineDismiss').style.display = 'none';
 
-            // Build timeline
-            const phases = data.all_phases || [];
-            const done = data.phases_done || [];
-            const current = data.phase || '';
+            // Build timeline for light phases only
             let html = '';
-            phases.forEach(p => {
+            const done = data.phases_done || [];
+            lightPhases.forEach(p => {
                 const isDone = done.includes(p);
-                const isCurrent = (p === current);
+                const isCurrent = (p === curPhase);
                 let cls = 'pipeline-step';
                 if (isDone) cls += ' pipeline-step-done';
                 else if (isCurrent) cls += ' pipeline-step-active';
@@ -468,76 +505,152 @@ function pollPipeline() {
             });
             document.getElementById('pipelineTimeline').innerHTML = html;
 
-            // Progress bar (across all phases)
-            const totalPhases = phases.length;
-            const doneCount = done.length;
+            const doneCount = done.filter(p => lightPhases.includes(p)).length;
             const phaseProgress = data.phase_progress || 0;
-            const overallPct = totalPhases > 0
-                ? Math.round(((doneCount + phaseProgress / 100) / totalPhases) * 100) : 0;
+            const overallPct = Math.round(((doneCount + phaseProgress / 100) / lightPhases.length) * 100);
             document.getElementById('pipelineProgressFill').style.width = overallPct + '%';
 
-        } else if (status === 'completed') {
+        } else if (isSectionGen) {
+            // Show banner for section generation
             banner.style.display = '';
-            document.getElementById('generateAllBtn').style.display = 'none';
-            document.getElementById('pipelineTitle').textContent = 'All Assets Generated!';
-            document.getElementById('pipelineTask').textContent = 'Everything is ready. Enjoy your study session!';
-            document.getElementById('pipelineIcon').textContent = 'check_circle';
-            document.getElementById('pipelineDismiss').style.display = '';
-            document.getElementById('pipelineProgressFill').style.width = '100%';
-            // Build completed timeline
-            const phases = data.all_phases || [];
-            document.getElementById('pipelineTimeline').innerHTML = phases.map(p =>
-                `<div class="pipeline-step pipeline-step-done">
-                    <span class="material-symbols-rounded pipeline-step-icon">check_circle</span>
-                    <span class="pipeline-step-label">${PHASE_LABELS[p] || p}</span>
-                </div>`
-            ).join('');
+            document.getElementById('pipelineTitle').textContent = `Generating ${PHASE_LABELS[curPhase] || curPhase}…`;
+            document.getElementById('pipelineTask').textContent = data.current_task || '';
+            document.getElementById('pipelineIcon').textContent = PHASE_ICONS[curPhase] || 'auto_awesome';
+            document.getElementById('pipelineDismiss').style.display = 'none';
+            document.getElementById('pipelineTimeline').innerHTML =
+                `<div class="pipeline-step pipeline-step-active">
+                    <span class="material-symbols-rounded pipeline-step-icon">pending</span>
+                    <span class="pipeline-step-label">${PHASE_LABELS[curPhase] || curPhase}</span>
+                </div>`;
+            document.getElementById('pipelineProgressFill').style.width = (data.phase_progress || 0) + '%';
+
+        } else if (status === 'completed') {
+            // Light pipeline done (or section gen done)
+            const done = data.phases_done || [];
+            const lightDone = lightPhases.every(p => done.includes(p));
+            if (lightDone) {
+                // Light pipeline finished — show a brief "ready" then dismiss
+                banner.style.display = '';
+                document.getElementById('pipelineTitle').textContent = 'Book Ready!';
+                document.getElementById('pipelineTask').textContent = 'Book indexed & structured. Generate content from each section tab.';
+                document.getElementById('pipelineIcon').textContent = 'check_circle';
+                document.getElementById('pipelineDismiss').style.display = '';
+                document.getElementById('pipelineProgressFill').style.width = '100%';
+                document.getElementById('pipelineTimeline').innerHTML = lightPhases.map(p =>
+                    `<div class="pipeline-step pipeline-step-done">
+                        <span class="material-symbols-rounded pipeline-step-icon">check_circle</span>
+                        <span class="pipeline-step-label">${PHASE_LABELS[p] || p}</span>
+                    </div>`
+                ).join('');
+            } else {
+                banner.style.display = 'none';
+            }
             clearInterval(pipelineInterval);
+            // Start polling section status
+            pollSectionStatus();
+            if (!sectionPollInterval) sectionPollInterval = setInterval(pollSectionStatus, 5000);
+
         } else if (status === 'error') {
             banner.style.display = '';
-            document.getElementById('pipelineTitle').textContent = 'Pipeline Error';
+            document.getElementById('pipelineTitle').textContent = 'Error';
             document.getElementById('pipelineTask').textContent = data.error || 'Unknown error';
             document.getElementById('pipelineIcon').textContent = 'error';
             document.getElementById('pipelineDismiss').style.display = '';
-            document.getElementById('generateAllBtn').style.display = '';
             clearInterval(pipelineInterval);
         } else {
-            // No pipeline or already dismissed — show Generate All if not completed
             banner.style.display = 'none';
-            document.getElementById('generateAllBtn').style.display = '';
             clearInterval(pipelineInterval);
+            // Poll section status when pipeline is idle/done
+            pollSectionStatus();
+            if (!sectionPollInterval) sectionPollInterval = setInterval(pollSectionStatus, 5000);
         }
       })
       .catch(() => {});
 }
 
-// Trigger full asset generation from notebook page
-function triggerGenerateAll() {
-    const btn = document.getElementById('generateAllBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="material-symbols-rounded spin" style="font-size:16px;">sync</span> Starting…';
-    fetch(`/books/${BOOK_ID}/generate-all`, { method: 'POST' })
+// ── Section status polling — show/hide per-section "Generate All" buttons ──
+function pollSectionStatus() {
+    fetch(`/books/${BOOK_ID}/section-status`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) return;
+        const sections = data.sections || {};
+        const running = data.running || {};
+
+        Object.keys(SECTION_BTN_MAP).forEach(section => {
+            const btnId = SECTION_BTN_MAP[section];
+            const btn = document.getElementById(btnId);
+            if (!btn) return;
+
+            const info = sections[section];
+            if (!info) { btn.style.display = 'none'; return; }
+
+            if (info.complete) {
+                // All items generated — hide the button
+                btn.style.display = 'none';
+            } else if (running[section]) {
+                // Currently generating — show as disabled with progress
+                btn.style.display = '';
+                btn.disabled = true;
+                const label = btn.querySelector('.section-gen-label');
+                if (label) label.textContent = `Generating… (${info.done}/${info.total})`;
+            } else {
+                // Items remaining — show the button
+                btn.style.display = '';
+                btn.disabled = false;
+                const label = btn.querySelector('.section-gen-label');
+                if (label) label.textContent = info.done > 0
+                    ? `${SECTION_LABELS[section]} (${info.done}/${info.total} done)`
+                    : SECTION_LABELS[section];
+            }
+        });
+      })
+      .catch(() => {});
+}
+
+// ── Trigger section generation ──
+function generateSection(section) {
+    const btnId = SECTION_BTN_MAP[section];
+    const btn = btnId && document.getElementById(btnId);
+    if (btn) {
+        btn.disabled = true;
+        const label = btn.querySelector('.section-gen-label');
+        if (label) label.textContent = 'Starting…';
+    }
+    fetch(`/books/${BOOK_ID}/generate-section/${section}`, { method: 'POST' })
         .then(r => r.json())
         .then(data => {
             if (data.ok) {
-                btn.style.display = 'none';
-                pipelineInterval = setInterval(pollPipeline, 3000);
+                // Start pipeline polling to show progress banner
+                if (!pipelineInterval) pipelineInterval = setInterval(pollPipeline, 3000);
                 pollPipeline();
+                // Poll section status more frequently while generating
+                if (sectionPollInterval) clearInterval(sectionPollInterval);
+                sectionPollInterval = setInterval(pollSectionStatus, 3000);
+                pollSectionStatus();
             } else {
-                btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px;">auto_awesome</span> Generate All Assets';
-                btn.disabled = false;
-                alert(data.error || 'Failed to start pipeline');
+                if (btn) {
+                    btn.disabled = false;
+                    const label = btn.querySelector('.section-gen-label');
+                    if (label) label.textContent = SECTION_LABELS[section] || 'Generate All';
+                }
+                alert(data.error || 'Failed to start generation');
             }
         })
         .catch(() => {
-            btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px;">auto_awesome</span> Generate All Assets';
-            btn.disabled = false;
+            if (btn) {
+                btn.disabled = false;
+                const label = btn.querySelector('.section-gen-label');
+                if (label) label.textContent = SECTION_LABELS[section] || 'Generate All';
+            }
         });
 }
 
 // Start polling on load
 pipelineInterval = setInterval(pollPipeline, 3000);
 pollPipeline();
+// Also poll section status on load after a short delay
+setTimeout(() => { pollSectionStatus(); sectionPollInterval = setInterval(pollSectionStatus, 8000); }, 2000);
 
 
 // ── Audio state ──────────────────────────────────

@@ -47,7 +47,11 @@ from books.book_infographic import generate_infographic, get_cached_infographic
 from books.book_flashcards import generate_flashcards, get_cached_cards, generate_super_cards, get_cached_super_cards
 from books.book_quiz import generate_quiz, get_cached_quiz
 from books.book_cheatsheet import generate_cheatsheet, get_cached_cheatsheet
-from books.book_pipeline import start_pipeline, get_pipeline_status
+from books.book_pipeline import (
+    start_pipeline, get_pipeline_status,
+    start_section_gen, is_section_running, get_section_completeness,
+    SECTION_PHASES,
+)
 from evaluate.answer_evaluator import (
     evaluate_text, evaluate_file_bytes, save_evaluation, save_eval_upload,
     load_evaluation, get_recent_evaluations,
@@ -630,10 +634,10 @@ def upload_book():
     book_id = register_book(filename, category, title)
     update_book(book_id, size_kb=size_kb, indexing=True)
 
-    # Launch full background pipeline (stores PDF, indexes, generates all assets)
+    # Launch light pipeline (stores PDF, indexes, extracts structure — no content generation)
     start_pipeline(book_id, pdf_bytes, filename)
 
-    flash(f"Book '{title or filename}' uploaded! Pipeline started — check progress in Notebook.", "success")
+    flash(f"Book '{title or filename}' uploaded! Indexing in progress — content will be generated on demand.", "success")
     return redirect(url_for("books_page"))
 
 
@@ -652,31 +656,46 @@ def reindex_book(book_id):
 
     update_book(book_id, indexing=True, error=None, indexed=False)
 
-    # Re-run full pipeline
+    # Re-run light pipeline (upload → index → structure)
     start_pipeline(book_id, pdf_bytes, book["filename"])
 
     flash(f"Re-indexing started for '{book.get('title', book['filename'])}'!", "success")
     return redirect(url_for("books_page"))
 
 
-@app.route("/books/<book_id>/generate-all", methods=["POST"])
-def generate_all_assets(book_id):
-    """Re-trigger the full asset generation pipeline from the notebook page."""
+@app.route("/books/<book_id>/generate-section/<section>", methods=["POST"])
+def generate_section(book_id, section):
+    """Trigger generation of all items for a specific section (mindmaps, quiz, etc.)."""
+    if section not in SECTION_PHASES:
+        return jsonify({"error": f"Unknown section: {section}"}), 400
+
     book = get_book(book_id)
     if not book:
         return jsonify({"error": "Book not found"}), 404
 
-    pipeline = book.get("pipeline", {})
-    if pipeline.get("status") == "running":
-        return jsonify({"error": "Pipeline already running"}), 409
+    if is_section_running(book_id, section):
+        return jsonify({"error": f"{section} generation already running"}), 409
 
-    pdf_bytes = get_pdf_bytes(book_id)
-    if not pdf_bytes:
-        return jsonify({"error": "PDF not found in database"}), 404
+    started = start_section_gen(book_id, section)
+    if not started:
+        return jsonify({"error": "Failed to start"}), 500
 
-    update_book(book_id, indexing=True, error=None)
-    start_pipeline(book_id, pdf_bytes, book["filename"])
-    return jsonify({"ok": True, "message": "Pipeline started"})
+    return jsonify({"ok": True, "message": f"Generating all {section}…"})
+
+
+@app.route("/books/<book_id>/section-status")
+def section_status(book_id):
+    """API: Return per-section completeness info for the notebook page."""
+    book = get_book(book_id)
+    if not book:
+        return jsonify({"error": "Book not found"}), 404
+
+    completeness = get_section_completeness(book_id)
+
+    # Also report which sections are currently generating
+    running = {s: is_section_running(book_id, s) for s in SECTION_PHASES}
+
+    return jsonify({"sections": completeness, "running": running})
 
 
 @app.route("/books/<book_id>/view")
