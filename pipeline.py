@@ -236,13 +236,20 @@ def run_pipeline(file_path: str, article_id: str = None):
     # Generate article title using Gemini and update registry
     if article_id:
         try:
+            # Use compressed text (cleaner than raw OCR which may have artifacts)
+            title_source = compressed_text[:3000] if compressed_text else raw_text[:3000]
             title_prompt = (
-                "Generate a short, descriptive title (max 10 words) for this article/document. "
-                "Return ONLY the title, nothing else.\n\n"
-                + raw_text[:2000]
+                "Read the following article/document text and generate a SHORT, DESCRIPTIVE "
+                "HEADLINE (max 10 words) that captures the main topic or subject.\n\n"
+                "RULES:\n"
+                "- Focus on WHAT the article is about (the subject matter, event, policy, etc.)\n"
+                "- Do NOT describe the format, source, or extraction method\n"
+                "- Do NOT mention 'text extraction', 'image', 'OCR', 'document', or 'PDF'\n"
+                "- Return ONLY the headline — no quotes, no explanation\n\n"
+                "ARTICLE TEXT:\n" + title_source
             )
             title = call_gemini(title_prompt).strip().strip('"').strip("'")
-            if title:
+            if title and len(title) < 120:
                 set_title(article_id, title)
         except Exception:
             pass
